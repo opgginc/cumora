@@ -117,8 +117,9 @@ function follow<T>(
       if (live && mine === latest) fail(errText(e))
     }
   }
-  // Back from the background, the copy may be minutes old.
-  const onVisible = () => { if (!document.hidden) void load() }
+  // Back from the background, the copy may be minutes old. load() itself
+  // skips the change to hidden.
+  const onVisible = () => void load()
   // `fork.coding` (a fork event, outside the client's event union) says the
   // server's copy changed. `hello` opens every connection, after events missed
   // while the socket was down.

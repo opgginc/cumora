@@ -18,9 +18,14 @@ function looksEncoded(token: string): boolean {
   return /[0-9+/=]/.test(token) || /[A-Z]/.test(token.slice(1))
 }
 
+/** The markers around a PEM private key, as regex source: the pattern here and
+ *  ./coding.ts, which finds a key whose END a cut took away, read them alike. */
+export const KEY_BEGIN = '-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----'
+export const KEY_END = '-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----'
+
 // The body stops at the first "-----", so a BEGIN without an END costs one
 // scan up to the next marker.
-const PRIVATE_KEY = /(-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----)(?:(?!-----)[\s\S])*(-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----)/g
+const PRIVATE_KEY = new RegExp(`(${KEY_BEGIN})(?:(?!-----)[\\s\\S])*(${KEY_END})`, 'g')
 
 /** Replaces the body of every PEM private key, its markers kept on one line.
  *  A key spans lines, so text that is redacted line by line (the Handbook's

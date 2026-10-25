@@ -164,24 +164,29 @@ test('a message T3 cut loses its unfinished key or token before redaction, so no
   const pem = (body: string, end: boolean) => `-----BEGIN RSA PRIVATE KEY-----\n${body}${end ? '\n-----END RSA PRIVATE KEY-----' : ''}`
   fakeT3(t, (name, args) => {
     if (name === 't3_environment_read') return { environmentId: 'env-1' }
-    if (name === 't3_thread_read' && args.limit === 1) return timeline({ itemCount: 2 }, [], null, true)
+    if (name === 't3_thread_read' && args.limit === 1) return timeline({ itemCount: 4 }, [], null, true)
     if (name === 't3_thread_read') {
-      return timeline({ itemCount: 2 }, [
+      return timeline({ itemCount: 4 }, [
         // The first key shrinks to [redacted], which pulls the second, cut by T3
         // before its END, into the characters the detail shows.
         item(0, 'assistant_message', `Two keys:\n${pem('A'.repeat(3_000), true)}\n${pem('B'.repeat(4_000), false)}`, true),
         // A token cut too short for its pattern.
         item(1, 'assistant_message', `Pushed with ghp_${'c'.repeat(10)}`, true),
-      ], 1, false)
+        // Cut right after a whole key's END marker, and inside one.
+        item(2, 'assistant_message', `Key:\n${pem('D'.repeat(3_000), true)}`, true),
+        item(3, 'assistant_message', `Key:\n${pem('E'.repeat(3_000), true).replace(/-----$/, '')}`, true),
+      ], 3, false)
     }
     throw new Error(`unexpected ${name}`)
   })
 
-  const [keys, token] = (await threadDetail(server('tok'), 'th-1', 't3code')).messages
+  const [keys, token, endCut, insideEnd] = (await threadDetail(server('tok'), 'th-1', 't3code')).messages
   assert.ok(keys.text.includes('[redacted]'), 'the whole key is redacted')
   assert.ok(!keys.text.includes('BBBB'), 'the cut key shows nothing of its body')
   assert.ok(keys.text.endsWith('…'))
   assert.equal(token.text, 'Pushed with…', 'the cut token goes')
+  assert.ok(!endCut.text.includes('DDDD'), `a key cut at the end of its END marker stays redacted: ${endCut.text.slice(0, 80)}`)
+  assert.ok(!insideEnd.text.includes('EEEE'), `a key cut inside its END marker shows nothing: ${insideEnd.text.slice(0, 80)}`)
 })
 
 test('a detail asks for no question without a pending request, and refuses a scheme the T3 app does not answer to', async (t) => {
@@ -214,7 +219,10 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
     updatedAt: '2026-10-20T01:05:00.000Z', woken: null,
   }])
   writeFileSync(join(root, 'server/computer/t3code.json'), JSON.stringify({ servers: [server('tok')] }))
+  // T3's own error text can quote the thread, a secret included.
+  let t3Error: string | null = null
   const calls = fakeT3(t, (name) => {
+    if (t3Error) throw new Error(t3Error)
     if (name === 't3_environment_read') return { environmentId: 'env-1' }
     if (name === 't3_thread_read') return timeline({}, [item(0, 'user_message', 'Fix the header')], 0, false)
     throw new Error(`unexpected ${name}`)
@@ -239,6 +247,12 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
   assert.equal(ok.code, 200)
   assert.equal(ok.body?.link, 't3code://threads/env-1/th-1', 'T3’s own scheme when the instance names none')
   assert.equal(ok.body?.thread.agentId, 'bot')
+
+  t3Error = `bad input near GITHUB_TOKEN=ghp_${'z'.repeat(36)}`
+  const failed = await call('c1', 'th-1')
+  assert.equal(failed.code, 200, 'a T3 that fails still leaves the copy')
+  assert.ok(failed.body?.error?.includes('[redacted]') && !failed.body.error.includes('zzzz'), `T3's error is redacted: ${failed.body?.error}`)
+  t3Error = null
 
   writeFileSync(join(root, 'server/computer/t3code.json'), JSON.stringify({ servers: [] }))
   const gone = await call('c1', 'th-1')

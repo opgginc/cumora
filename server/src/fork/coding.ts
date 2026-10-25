@@ -39,7 +39,7 @@ import { join, resolve } from 'node:path'
 import type { Request, Response } from 'express'
 import type { AuthedRequest } from '../auth.js'
 import { postWake, type Wake } from './dispatch.js'
-import { preview, redact } from './redact.js'
+import { KEY_BEGIN, KEY_END, preview, redact, redactKeys } from './redact.js'
 import { isPrivileged } from './roles.js'
 import { codingWakeKey, getForkStore, type CodingThread, type NewCodingThread } from './store.js'
 
@@ -146,17 +146,18 @@ function t3File(): T3File {
   return JSON.parse(readFileSync(T3_FILE, 'utf8')) as T3File
 }
 
-// The unfinished end of a text T3 cut: a private key whose END was cut away,
-// else the token the cut went through. Neither matches a pattern in redact().
-// The text is at most T3_TEXT long and BEGIN markers are rare, so the scan
-// from each one to the end stays small.
-const UNFINISHED = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----(?![\s\S]*-----END [A-Z0-9 ]*PRIVATE KEY)[\s\S]*$|(?<!\S)\S+$/
+// The unfinished end of a text T3 cut: a private key whose whole END marker
+// was cut away, else the token the cut went through. Neither matches a pattern
+// in redact(). The text is at most T3_TEXT long and BEGIN markers are rare, so
+// the scan from each one to the end stays small.
+const UNFINISHED = new RegExp(`${KEY_BEGIN}(?![\\s\\S]*${KEY_END})[\\s\\S]*$|(?<!\\S)\\S+$`)
 
 /** A message as the detail shows it: preview() redacts before it cuts and
- *  keeps the lines. A text T3 already cut loses its unfinished end first, and
- *  "…" marks the cut. */
+ *  keeps the lines. A text T3 already cut loses its unfinished end first,
+ *  after its whole keys are redacted, so dropping the last token never breaks
+ *  the END marker of a key that was whole; "…" marks the cut. */
 function clip(text: string, cut: boolean): string {
-  const shown = preview(cut ? text.replace(UNFINISHED, '') : text, TEXT, { keepLines: true }) ?? ''
+  const shown = preview(cut ? redactKeys(text).replace(UNFINISHED, '') : text, TEXT, { keepLines: true }) ?? ''
   return cut && !shown.endsWith('…') ? `${shown}…` : shown
 }
 
