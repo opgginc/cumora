@@ -4,8 +4,8 @@
  * when its copy changed, so the tab reads the list again then, and the last
  * answer per agent draws the list at once when the tab opens again. A row
  * opens the thread's detail in place of the list (`?t3=<server>:<thread id>`),
- * which T3 is read for when it opens, and its pull request chips open the pull
- * requests. Owners and admins only, because a title an agent wrote can quote
+ * which T3 is read for when it opens, and its pull request chip opens the last
+ * pull request. Owners and admins only, because a title an agent wrote can quote
  * any room. The agent drawer, the Agents wall and workspace and the agent menu
  * read the same lists through `useCoding`; the drawer and the workspace show
  * the list and its detail through `CodingList`.
@@ -81,7 +81,7 @@ export function look(status: string): { label: NKey; tone: string; icon: JSX.Ele
   return { label: 'coding.idle', tone: 'muted', icon: <span className="nx-coding__dot" aria-hidden /> }
 }
 
-/** The pull request an Agents wall tile shows for a thread: the last one T3 lists. */
+/** The pull request a list row and an Agents wall tile show for a thread: the last one T3 lists. */
 export const lastPr = (t: Thread): Thread['pullRequests'][number] | undefined => t.pullRequests[t.pullRequests.length - 1]
 
 /** A running thread counts from its start, a resting one from when it stopped. */
@@ -157,33 +157,26 @@ export function useCoding(ids: string, enabled = true): { coding: AgentCoding[] 
   return { coding: own ? coding : null, fresh, error }
 }
 
-/** A thread's pull requests, each opening on GitHub. */
-function PullRequests({ t, className }: { t: Thread; className: string }) {
-  return (
-    <>
-      {t.pullRequests.map((p) => (
-        <a key={p.url} className={`${className} nx-mono`} href={p.url} target="_blank" rel="noopener noreferrer">#{p.number}</a>
-      ))}
-    </>
-  )
-}
-
 function CodingRow({ t, to, agent, server }: { t: Thread; to: string; agent?: Participant; server: boolean }) {
   const nt = useNT()
   const locale = useLocale()
   const { label, tone, icon } = look(t.status)
+  const pr = lastPr(t)
   const when = relative(threadTime(t), locale)
   return (
     <div className="nx-row nx-coding" data-tone={tone}>
       {icon}
       {agent && <Avatar p={agent} size={20} />}
-      {/* Stretched over the whole row; the pull request chips sit above it. */}
+      {/* Stretched over the whole row; the pull request chip sits above it. */}
       <a className="nx-row__text nx-coding__open" href={to} onClick={linkClick}>
         <span className="nx-coding__title">{t.title}</span>
         {/* The avatar is hidden from screen readers, so the hint names the agent. */}
         <span className="nx-row__hint">{[agent?.name, nt(label), when, server ? t.server : null].filter(Boolean).join(' · ')}</span>
       </a>
-      <PullRequests t={t} className="nx-chip nx-coding__pr" />
+      {/* One chip leaves the title room; the detail lists every pull request,
+          and the count, under the row's link, opens it. */}
+      {pr && <a className="nx-chip nx-mono nx-coding__pr" href={pr.url} target="_blank" rel="noopener noreferrer">#{pr.number}</a>}
+      {t.pullRequests.length > 1 && <span className="nx-chip nx-mono">+{t.pullRequests.length - 1}</span>}
     </div>
   )
 }
@@ -270,7 +263,9 @@ function ThreadDetail({ id, listed, several }: { id: string; listed?: { t: Threa
           {detail?.link && (
             <a className={`nx-btn nx-btn--sm ${asked ? 'nx-btn--primary' : 'nx-btn--outline'}`} href={detail.link}>{nt('coding.openInT3')}</a>
           )}
-          <PullRequests t={t} className="nx-btn nx-btn--outline nx-btn--sm" />
+          {t.pullRequests.map((p) => (
+            <a key={p.url} className="nx-btn nx-btn--outline nx-btn--sm nx-mono" href={p.url} target="_blank" rel="noopener noreferrer">#{p.number}</a>
+          ))}
         </div>
       )}
       {!detail ? (
