@@ -72,14 +72,15 @@ const STALE_MS = 30 * 60_000
 // ponytail: the Coding tab shows each agent's 10 most recently changed
 // threads; page the route if someone needs the older ones there.
 const LIST = 10
-// A thread's detail shows its newest MESSAGES, each cut to TEXT characters. T3
-// sends T3_TEXT, well past TEXT, so redact() sees a secret whole before the
-// cut. T3 pages a timeline from its start and counts every item in it, tool
-// calls too, so the messages are looked for among the newest TAIL items.
+// A thread's detail shows its newest MESSAGES as Markdown, each cut to TEXT
+// characters, which leaves a usual reply whole for its copy button. T3 sends
+// T3_TEXT, twice TEXT, so redact() sees a secret whole before the cut. T3
+// pages a timeline from its start and counts every item in it, tool calls
+// too, so the messages are looked for among the newest TAIL items.
 // ponytail: a thread busy with tools for longer than TAIL items shows no
 // messages; the T3 app shows them all.
 const MESSAGES = 4
-const TEXT = 800
+const TEXT = 4_000
 const T3_TEXT = 8_000
 const TAIL = 200
 // T3's message items, as the detail names them.

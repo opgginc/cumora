@@ -12,17 +12,18 @@
  */
 import { useEffect, useState } from 'react'
 import { http, ws } from '@/api/client'
+import { RichBody } from '@/components/Message'
 import { useLocale } from '@/lib/i18n'
 import { useParticipants } from '@/stores/participants'
 import type { Conversation, Participant } from '@/types'
 import { agentRef } from '../agentRefs'
 import { relative } from '../format'
-import { useAdmin } from '../hooks'
+import { useAdmin, useCopy } from '../hooks'
 import { useNT, type NKey } from '../i18n'
 import { getRoute, goBack, linkClick, useRoute, withRoute } from '../router'
 import { Avatar } from '../ui/Avatar'
 import { IconButton, Spinner } from '../ui/primitives'
-import { ICheck, IChevronLeft, IInfo, IStop, IX } from '../ui/icons'
+import { ICheck, IChevronLeft, ICopy, IInfo, IStop, IX } from '../ui/icons'
 import { errText } from '../sections/calendar/parts'
 import { useRoomAgents } from '../chat/ChatView'
 
@@ -187,6 +188,17 @@ function CodingRow({ t, to, agent, server }: { t: Thread; to: string; agent?: Pa
   )
 }
 
+/** Copies a message's Markdown as the server sent it: redacted, and ending in
+ *  "…" where it was cut. Always shown, since touch has no hover. */
+function CopyMessage({ text }: { text: string }) {
+  const { done, label, copy } = useCopy()
+  return (
+    <IconButton small label={label} onClick={() => copy(text)}>
+      {done === 'copied' ? <ICheck aria-hidden /> : <ICopy aria-hidden />}
+    </IconButton>
+  )
+}
+
 /**
  * One thread in place of the list: its copy at once when the list holds it,
  * then what T3 holds of it now. Each read opens a T3 session on the
@@ -289,8 +301,13 @@ function ThreadDetail({ id, listed, several }: { id: string; listed?: { t: Threa
               <div className="nx-rows">
                 {detail.messages.map((m) => (
                   <div key={m.id} className="nx-coding-message">
-                    <span className="nx-row__hint">{nt(`coding.${m.kind}`)} · {relative(m.at, locale)}</span>
-                    <p>{m.text}</p>
+                    <div className="nx-coding-message__head">
+                      <span className="nx-row__hint">{nt(`coding.${m.kind}`)} · {relative(m.at, locale)}</span>
+                      <CopyMessage text={m.text} />
+                    </div>
+                    {/* The chat's Markdown: RichBody drops raw HTML, and nx-bubble__text
+                        gives its blocks the chat's rhythm (chat.css). */}
+                    <div className="nx-bubble__text nx-coding-message__text"><RichBody body={m.text} /></div>
                   </div>
                 ))}
               </div>

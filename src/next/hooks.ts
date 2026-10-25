@@ -1,9 +1,11 @@
-import { useCallback, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { api } from '@/api/client'
+import { copyText } from '@/lib/clipboard'
 import { getMeId, useAuth } from '@/stores/auth'
 import { useConversations } from '@/stores/conversations'
 import type { Conversation, Participant } from '@/types'
 import { haptic } from './haptics'
+import { useNT } from './i18n'
 import { href, navigate } from './router'
 
 /* One shared 1 Hz clock for every elapsed-time label, instead of an
@@ -44,6 +46,24 @@ function noopSubscribe(): () => void {
 
 /** The viewer owns or administers the active workspace: the fork's agent
  *  routes (screen, coding, handbook) answer only them. */
+/** A copy button's state: `copy(text)` copies, and `done` and `label` say how
+ *  it went for 1.5 s, so the button can show a check (no haptic for a copy
+ *  that worked) or a failure, which plays the error haptic. */
+export function useCopy(): { done: 'copied' | 'failed' | null; label: string; copy: (text: string) => void } {
+  const nt = useNT()
+  const [done, setDone] = useState<'copied' | 'failed' | null>(null)
+  useEffect(() => {
+    if (!done) return
+    const t = window.setTimeout(() => setDone(null), 1500)
+    return () => window.clearTimeout(t)
+  }, [done])
+  const copy = useCallback((text: string) => {
+    copyText(text).then(() => setDone('copied'), () => { haptic('error'); setDone('failed') })
+  }, [])
+  const label = done === 'copied' ? nt('msg.copied') : done === 'failed' ? nt('msg.copyFailed') : nt('msg.copy')
+  return { done, label, copy }
+}
+
 export function useAdmin(): boolean {
   return useAuth((s) => {
     const role = s.companies.find((x) => x.id === s.activeCompanyId)?.role

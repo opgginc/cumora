@@ -130,7 +130,7 @@ test('a detail reads the newest messages from the end of the timeline and the qu
       ], 300, true)
     }
     if (name === 't3_thread_read' && args.afterPosition === 300) {
-      return timeline(thread, [item(400, 'assistant_message', 'b'.repeat(900)), item(449, 'assistant_message', 'Cut by T3', true)], 449, false)
+      return timeline(thread, [item(400, 'assistant_message', 'b'.repeat(4_100)), item(449, 'assistant_message', 'Cut by T3', true)], 449, false)
     }
     if (name === 't3_pending_request_list') return { requestIds: ['q-1'] }
     if (name === 't3_pending_request_read') {
@@ -155,7 +155,7 @@ test('a detail reads the newest messages from the end of the timeline and the qu
   assert.deepEqual(detail.messages.map((m) => [m.id, m.kind, m.text]), [
     [270, 'reply', 'Pushed with [redacted]'],
     [300, 'plan', '1. Fix it'],
-    [400, 'reply', `${'b'.repeat(800)}…`],
+    [400, 'reply', `${'b'.repeat(4_000)}…`],
     [449, 'reply', 'Cut by T3…'],
   ], 'the newest four, cut after redaction, and marked where T3 cut them')
   assert.deepEqual(detail.questions, [{ id: 'a', header: 'Deploy', text: 'Push with GITHUB_TOKEN=[redacted] now?', options: [{ label: 'Yes', description: 'Push to main' }] }])

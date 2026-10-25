@@ -1,6 +1,6 @@
 /**
- * The agent drawer: an agent's screen, T3 Code threads and profile in the room
- * panel, at `peek=agent:<id>` with `&pane=screen|jobs|profile` (and `&t3=` for
+ * The agent drawer: an agent's T3 Code threads, screen and profile in the room
+ * panel, at `peek=agent:<id>` with `&pane=jobs|screen|profile` (and `&t3=` for
  * one of its threads, CodingTab.tsx). The agent
  * menu, the Members tab and @mentions open it inside a chat, so the
  * conversation stays in view; the Agents section shows the same parts as the
@@ -31,11 +31,13 @@ export function AgentDrawer({ id, layout, onClose }: { id: string; layout: Layou
   // A `pane=screen` link must not show the profile until the host lands.
   const hostPending = useHostPending(p)
 
-  const panes: AgentPane[] = seesWork ? ['screen', 'jobs', 'profile'] : ['profile']
-  // A peek without a pane (a person, a classic profile link) shows the
-  // profile: the screen opens only when asked for, since it holds a stream.
+  // The threads come first: they are what an owner opens an agent for most,
+  // and unlike the screen they hold no stream.
+  const panes: AgentPane[] = seesWork ? ['jobs', 'screen', 'profile'] : ['profile']
+  // A peek without a pane (a Members row, a classic profile link) shows the
+  // first pane: the threads, or the profile for anyone who cannot see them.
   const asked = route.search.get('pane') as AgentPane | null
-  const pane = asked && panes.includes(asked) ? asked : 'profile'
+  const pane = asked && panes.includes(asked) ? asked : panes[0]
 
   return (
     <aside className="nx-panel" aria-label={p?.name ?? nt('agents.notFound')}>

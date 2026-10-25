@@ -490,7 +490,9 @@ button.nx-hb-note { transition: background-color var(--duration-quick); }
 .nx-coding-question b { font-weight: 500; }
 .nx-coding-message { display: flex; flex-direction: column; gap: 4px; padding: 12px; }
 .nx-coding-message + .nx-coding-message { border-top: 1px solid var(--border); }
-.nx-coding-message p { margin: 0; font-size: var(--text-caption); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* The label, and the copy button at its end. */
+.nx-coding-message__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nx-coding-message__text { min-width: 0; font-size: var(--text-body); overflow-wrap: anywhere; }
 
 /* ── Files ─────────────────────────────────────────────────────────── */
 .nx-files { display: flex; flex-direction: column; gap: 8px; }
