@@ -304,6 +304,7 @@ const core = {
   'coding.request': 'Request',
   'coding.reply': 'Reply',
   'coding.plan': 'Plan',
+  'coding.image': 'Image in T3: {name}',
   'coding.t3Failed': 'Could not read T3: {error}',
 
   'computer.lockedBody': 'The browser shows every site the agent is signed in to, so only workspace owners and admins can see it.',

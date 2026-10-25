@@ -188,6 +188,14 @@ function CodingRow({ t, to, agent, server }: { t: Thread; to: string; agent?: Pa
   )
 }
 
+/** A message's Markdown with every image this app cannot load turned into a
+ *  label. T3 shows images from the developer's own machine (`/tmp/…`); here
+ *  such a path would load from this app's server and leave an empty frame.
+ *  Images on the web stay. */
+const loadableImages = (text: string, label: (name: string) => string): string =>
+  text.replace(/!\[([^\]]*)\]\(\s*(?!https?:\/\/)([^)\s]*)[^)]*\)/gi, (_, alt: string, src: string) =>
+    `*${label(alt.trim() || src.split('/').pop() || src).replace(/[\\*_[\]]/g, '\\$&')}*`)
+
 /** Copies a message's Markdown as the server sent it: redacted, and ending in
  *  "…" where it was cut. Always shown, since touch has no hover. */
 function CopyMessage({ text }: { text: string }) {
@@ -307,7 +315,9 @@ function ThreadDetail({ id, listed, several }: { id: string; listed?: { t: Threa
                     </div>
                     {/* The chat's Markdown: RichBody drops raw HTML, and nx-bubble__text
                         gives its blocks the chat's rhythm (chat.css). */}
-                    <div className="nx-bubble__text nx-coding-message__text"><RichBody body={m.text} /></div>
+                    <div className="nx-bubble__text nx-coding-message__text">
+                      <RichBody body={loadableImages(m.text, (name) => nt('coding.image', { name }))} />
+                    </div>
                   </div>
                 ))}
               </div>

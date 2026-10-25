@@ -313,6 +313,7 @@ export const zhCN: Partial<Record<keyof typeof en, string>> = {
   'coding.request': '请求',
   'coding.reply': '回复',
   'coding.plan': '计划',
+  'coding.image': 'T3 中的图片：{name}',
   'coding.t3Failed': '无法读取 T3：{error}',
 
   'computer.lockedBody': '浏览器会显示智能体登录过的所有网站，所以只有工作区所有者和管理员可以查看。',
