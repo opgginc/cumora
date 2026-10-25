@@ -75,7 +75,8 @@ export function bindAgentMenu(root: HTMLElement): () => void {
 export function openAgentPane(id: string, pane: AgentPane, t3: string | null = null): void {
   const r = getRoute()
   if (r.section === 'chats' && r.id) {
-    // Another pane of an open drawer takes its place; a thread opens over it, so Back returns to the drawer.
+    // Another pane of an open drawer takes its place. A thread opens as a new
+    // entry, so Back returns to where it was opened: the drawer, or the chat.
     const same = r.peek?.kind === 'agent' && r.peek.id === id
     navigate(withRoute(r, { peek: { kind: 'agent', id }, threadId: null, params: { pane, t3 } }), { replace: same && !t3 })
     return

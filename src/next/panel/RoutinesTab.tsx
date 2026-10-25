@@ -16,10 +16,11 @@ import type { CalendarEvent, Conversation } from '@/types'
 import { clock, dateTime } from '../format'
 import { haptic } from '../haptics'
 import { useNT, type NT } from '../i18n'
-import { getRoute, goBack, href, linkClick, useRoute, withRoute } from '../router'
+import { getRoute, href, linkClick, useRoute, withRoute } from '../router'
 import { Avatar } from '../ui/Avatar'
-import { IconButton, Spinner, Switch } from '../ui/primitives'
-import { IChevronLeft, IChevronRight, IRepeat } from '../ui/icons'
+import { Spinner, Switch } from '../ui/primitives'
+import { IChevronRight, IRepeat } from '../ui/icons'
+import { JobBar } from './JobBar'
 import { describeRepeat } from '../sections/calendar/model'
 import { errText, RunNow } from '../sections/calendar/parts'
 import { everyHours, familiesOf, HOUR_STEPS, isDaily, memberAt, minuteOf, planFor, postsInto, timesFor, titleFor, type Family } from './routines'
@@ -213,14 +214,10 @@ function JobView({ f }: { f: Family }) {
   const daily = isDaily(f)
   return (
     <div className="nx-job">
-      <div className="nx-job__bar">
-        <IconButton small label={nt('routines.back')} onClick={() => goBack(withRoute(getRoute(), { params: { routine: null } }))}>
-          <IChevronLeft />
-        </IconButton>
-        <h3>{f.title || nt('calendar.untitled')}</h3>
+      <JobBar param="routine" label={nt('routines.back')} title={f.title || nt('calendar.untitled')}>
         {/* Runs the time that is due next, or the first when all are paused. */}
         <RunNow ev={f.events.find((e) => e.id === next?.id) ?? f.events[0]} />
-      </div>
+      </JobBar>
       {assignee && <p className="nx-job__who"><Avatar p={assignee} size={20} presence />{assignee.name}</p>}
       {daily && <Rhythm f={f} />}
       <h4 className="nx-group-label">{nt('routines.times')}</h4>

@@ -44,8 +44,6 @@ function noopSubscribe(): () => void {
   return () => {}
 }
 
-/** The viewer owns or administers the active workspace: the fork's agent
- *  routes (screen, coding, handbook) answer only them. */
 /** A copy button's state: `copy(text)` copies, and `done` and `label` say how
  *  it went for 1.5 s, so the button can show a check (no haptic for a copy
  *  that worked) or a failure, which plays the error haptic. */
@@ -64,6 +62,8 @@ export function useCopy(): { done: 'copied' | 'failed' | null; label: string; co
   return { done, label, copy }
 }
 
+/** The viewer owns or administers the active workspace: the fork's agent
+ *  routes (screen, coding, handbook) answer only them. */
 export function useAdmin(): boolean {
   return useAuth((s) => {
     const role = s.companies.find((x) => x.id === s.activeCompanyId)?.role

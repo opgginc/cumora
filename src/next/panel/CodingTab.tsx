@@ -10,7 +10,7 @@
  * read the same lists through `useCoding`; the drawer and the workspace show
  * the list and its detail through `CodingList`.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { http, ws } from '@/api/client'
 import { RichBody } from '@/components/Message'
 import { useLocale } from '@/lib/i18n'
@@ -20,12 +20,14 @@ import { agentRef } from '../agentRefs'
 import { relative } from '../format'
 import { useAdmin, useCopy } from '../hooks'
 import { useNT, type NKey } from '../i18n'
-import { getRoute, goBack, linkClick, useRoute, withRoute } from '../router'
+import { linkClick, useRoute, withRoute } from '../router'
 import { Avatar } from '../ui/Avatar'
 import { IconButton, Spinner } from '../ui/primitives'
-import { ICheck, IChevronLeft, ICopy, IInfo, IStop, IX } from '../ui/icons'
+import { ICheck, ICopy, IInfo, IStop, IX } from '../ui/icons'
 import { errText } from '../sections/calendar/parts'
 import { useRoomAgents } from '../chat/ChatView'
+import { loadableImages } from './codingMarkdown'
+import { JobBar } from './JobBar'
 
 export interface Thread {
   server: string
@@ -104,9 +106,14 @@ export const newestThreads = (coding: AgentCoding[]): Array<{ t: Thread; agentId
 /**
  * Reads now and again when the app comes back to the foreground, and with
  * `socket` also whenever the server's copy may have changed; only the newest
- * read lands. Returns what stops it.
+ * read lands. Returns what stops it, with `load` for a read its caller asks for.
  */
-function follow<T>(read: () => Promise<T>, land: (data: T) => void, fail: (error: string) => void, socket: boolean): () => void {
+function follow<T>(
+  read: () => Promise<T>,
+  land: (data: T) => void,
+  fail: (error: string) => void,
+  socket: boolean,
+): (() => void) & { load: () => void } {
   let live = true
   // An event can start a read while an older one is still out; only the
   // newest may land.
@@ -131,11 +138,12 @@ function follow<T>(read: () => Promise<T>, land: (data: T) => void, fail: (error
     : () => {}
   void load()
   document.addEventListener('visibilitychange', onVisible)
-  return () => {
+  const stop = () => {
     live = false
     off()
     document.removeEventListener('visibilitychange', onVisible)
   }
+  return Object.assign(stop, { load: () => void load() })
 }
 
 /**
@@ -196,14 +204,6 @@ function CodingRow({ t, to, agent, server }: { t: Thread; to: string; agent?: Pa
   )
 }
 
-/** A message's Markdown with every image this app cannot load turned into a
- *  label. T3 shows images from the developer's own machine (`/tmp/…`); here
- *  such a path would load from this app's server and leave an empty frame.
- *  Images on the web stay. */
-const loadableImages = (text: string, label: (name: string) => string): string =>
-  text.replace(/!\[([^\]]*)\]\(\s*(?!https?:\/\/)([^)\s]*)[^)]*\)/gi, (_, alt: string, src: string) =>
-    `*${label(alt.trim() || src.split('/').pop() || src).replace(/[\\*_[\]]/g, '\\$&')}*`)
-
 /** Copies a message's Markdown as the server sent it: redacted, and ending in
  *  "…" where it was cut. Always shown, since touch has no hover. */
 function CopyMessage({ text }: { text: string }) {
@@ -238,21 +238,23 @@ function ThreadDetail({ open, listed, several }: {
   const agentId = detail?.thread.agentId ?? listed?.agentId
   // Several agents share the list: the detail names its own, as its row does.
   const agent = useParticipants((s) => (several && agentId ? s.byId[agentId] : undefined))
-  const changed = listed ? `${listed.t.status} ${listed.t.updatedAt}` : null
   const path = `/fork/coding/${encodeURIComponent(open.server)}/${encodeURIComponent(open.threadId)}`
-  useEffect(
-    () => follow(() => http<Detail>(path), (d) => { setDetail(d); setError(null) }, setError, false),
-    [path, changed],
-  )
+  const reload = useRef<() => void>(() => {})
+  useEffect(() => {
+    const stop = follow(() => http<Detail>(path), (d) => { setDetail(d); setError(null) }, setError, false)
+    reload.current = stop.load
+    return stop
+  }, [path])
+  // The list's copy of this thread. Its first arrival (a thread opened from a
+  // link, before the list loaded) is no change: T3 was read when the detail opened.
+  const changed = listed ? `${listed.t.status} ${listed.t.updatedAt}` : null
+  const seen = useRef(changed)
+  useEffect(() => {
+    if (seen.current !== null && changed !== null && changed !== seen.current) reload.current()
+    seen.current = changed
+  }, [changed])
 
-  const bar = (
-    <div className="nx-job__bar">
-      <IconButton small label={nt('coding.back')} onClick={() => goBack(withRoute(getRoute(), { params: { t3: null } }))}>
-        <IChevronLeft />
-      </IconButton>
-      {t && <h3>{t.title}</h3>}
-    </div>
-  )
+  const bar = <JobBar param="t3" label={nt('coding.back')} title={t?.title} />
   // A link opened afresh shows nothing of the thread until the server answers.
   if (!t) {
     return (

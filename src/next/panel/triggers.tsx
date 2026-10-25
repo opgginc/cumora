@@ -17,8 +17,9 @@ import { haptic } from '../haptics'
 import { useNT } from '../i18n'
 import { getRoute, goBack, linkClick, withRoute } from '../router'
 import { Avatar } from '../ui/Avatar'
-import { Dialog, IconButton, Spinner, Switch } from '../ui/primitives'
-import { IChevronLeft, IChevronRight } from '../ui/icons'
+import { Dialog, Spinner, Switch } from '../ui/primitives'
+import { IChevronRight } from '../ui/icons'
+import { JobBar } from './JobBar'
 import { errText, IPlay } from '../sections/calendar/parts'
 
 export interface Trigger {
@@ -119,9 +120,7 @@ export function TriggerView({ t, onChanged }: { t: Trigger; onChanged: () => Pro
   const close = () => goBack(withRoute(getRoute(), { params: { trigger: null } }))
   return (
     <div className="nx-job">
-      <div className="nx-job__bar">
-        <IconButton small label={nt('routines.back')} onClick={close}><IChevronLeft /></IconButton>
-        <h3>{t.title}</h3>
+      <JobBar param="trigger" label={nt('routines.back')} title={t.title}>
         <button
           type="button"
           className="nx-btn nx-btn--outline"
@@ -147,7 +146,7 @@ export function TriggerView({ t, onChanged }: { t: Trigger; onChanged: () => Pro
           {note?.ok ? note.text : nt('calendar.runNow')}
         </button>
         {note && !note.ok && <p className="nx-field__error" role="alert">{note.text}</p>}
-      </div>
+      </JobBar>
       {assignee && <p className="nx-job__who"><Avatar p={assignee} size={20} presence />{assignee.name}</p>}
       <p className="nx-job__who">{nt('routines.trigger.when', { repo: t.repo })} · {nt('routines.trigger.as', { profile: t.profile })}</p>
       <LastFire t={t} />

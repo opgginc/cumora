@@ -81,7 +81,7 @@ const LIST = 10
 // messages; the T3 app shows them all.
 const MESSAGES = 4
 const TEXT = 4_000
-const T3_TEXT = 8_000
+const T3_TEXT = TEXT * 2
 const TAIL = 200
 // T3's message items, as the detail names them.
 const KINDS = new Map<string, ThreadDetail['messages'][number]['kind']>([
