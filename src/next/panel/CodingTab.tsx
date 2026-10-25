@@ -244,7 +244,7 @@ function ThreadDetail({ open, listed, several }: {
     seen.current = changed
   }, [changed])
 
-  const bar = <JobBar param="t3" label={nt('coding.back')} title={t?.title} />
+  const bar = <JobBar param="t3" label={nt('chat.back')} title={t?.title} />
   // A link opened afresh shows nothing of the thread until the server answers.
   if (!t) {
     return (

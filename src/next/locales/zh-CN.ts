@@ -304,7 +304,6 @@ export const zhCN: Partial<Record<keyof typeof en, string>> = {
   'coding.idle': '空闲',
   'coding.serverError': 'T3 服务器 {server}：{error}',
   'coding.noneAgent': '还没有 T3 Code 线程。',
-  'coding.back': '全部线程',
   'coding.openInT3': '在 T3 中打开',
   'coding.question': '问题',
   'coding.answerInT3': '请在 T3 应用中回答。',

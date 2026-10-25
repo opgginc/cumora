@@ -114,6 +114,6 @@ test('preview redacts before it cuts and keeps one line', () => {
 
 test('preview with keepLines keeps the lines Markdown needs, and still redacts before it cuts', () => {
   assert.equal(preview('## Done\n\n- one\n- two  ', 100, { keepLines: true }), '## Done\n\n- one\n- two')
-  const out = preview(`Line\n${'x'.repeat(30)} sk-${'a'.repeat(40)}`, 40, { keepLines: true })
+  const out = preview(`Line\n${'x'.repeat(25)} sk-${'a'.repeat(40)}`, 40, { keepLines: true })
   assert.ok(out && !out.includes('aaaa'), `a cut must not expose part of a key: ${out}`)
 })

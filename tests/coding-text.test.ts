@@ -27,6 +27,7 @@ test('an image only T3 can show becomes its label, in italics', () => {
 test('images on the web, links and code stay as written', () => {
   for (const text of [
     '![shot](https://example.com/shot.png)',
+    '![dot](data:image/png;base64,iVBORw0KGgo=)',
     '[log](/tmp/log.txt)',
     'Use `![x](/tmp/x.png)` in a reply',
     'Or ``![x](/tmp/x.png) with ` inside`` in a reply',

@@ -19,8 +19,8 @@ export function parseThreadKey(key: string): { server: string; threadId: string 
 // is seen: a fence (``` or ~~~, three or more) runs to the same fence on a
 // line of its own, or to the end of a message cut inside it; then inline
 // code, closed by a run of as many backticks as opened it; then an image that
-// is not on the web.
-const PART = /(`{3,}|~{3,})[\s\S]*?(?:\n\1|$)|(`+)[^\n]*?(?<!`)\2(?!`)|!\[([^\]]*)\]\(\s*(?!https?:\/\/)([^)\s]*)[^)]*\)/gi
+// is neither on the web nor inline data.
+const PART = /(`{3,}|~{3,})[\s\S]*?(?:\n\1|$)|(`+)[^\n]*?(?<!`)\2(?!`)|!\[([^\]]*)\]\(\s*(?!https?:\/\/|data:image\/)([^)\s]*)[^)]*\)/gi
 
 /**
  * `text` with each image this app cannot load replaced by `label(name)` in

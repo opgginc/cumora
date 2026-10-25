@@ -544,7 +544,7 @@ export async function codingThread(requireCompany: Requirer, req: Request & Auth
     res.status(404).json({ error: 'not found' })
     return
   }
-  let detail: ThreadDetail | null = null
+  let detail = NO_DETAIL
   let error: string | null = null
   try {
     const { scheme = 't3code', servers } = t3File()
@@ -557,7 +557,7 @@ export async function codingThread(requireCompany: Requirer, req: Request & Auth
   }
   res.json({
     thread: { ...shownThread(t), agentId: t.agentId },
-    ...(detail ?? NO_DETAIL),
+    ...detail,
     error,
   })
 }
