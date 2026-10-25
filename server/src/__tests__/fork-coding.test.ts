@@ -117,7 +117,6 @@ const timeline = (thread: object, items: object[], nextPosition: number | null, 
 })
 
 test('a detail reads the newest messages from the end of the timeline and the question, redacted, with the T3 app link', async (t) => {
-  writeFileSync(join(root, 'server/computer/t3code.json'), JSON.stringify({ scheme: 't3code-dev', servers: [] }))
   const thread = { itemCount: 450, pendingRequestCount: 1, branch: 't3/fix-header' }
   const calls = fakeT3(t, (name, args) => {
     if (name === 't3_environment_read') return { environmentId: 'env-1', label: 'mbp' }
@@ -139,7 +138,7 @@ test('a detail reads the newest messages from the end of the timeline and the qu
     throw new Error(`unexpected ${name}`)
   })
 
-  const detail = await threadDetail(server('tok'), 'th-1')
+  const detail = await threadDetail(server('tok'), 'th-1', 't3code-dev')
 
   assert.deepEqual(calls, [
     't3_environment_read {}',
@@ -155,27 +154,25 @@ test('a detail reads the newest messages from the end of the timeline and the qu
   assert.deepEqual(detail.messages.map((m) => [m.id, m.kind, m.text]), [
     [270, 'reply', 'Pushed with [redacted]'],
     [300, 'plan', '1. Fix it'],
-    [400, 'reply', `${'b'.repeat(4_000)}…`],
+    [400, 'reply', `${'b'.repeat(3_999)}…`],
     [449, 'reply', 'Cut by T3…'],
   ], 'the newest four, cut after redaction, and marked where T3 cut them')
   assert.deepEqual(detail.questions, [{ id: 'a', header: 'Deploy', text: 'Push with GITHUB_TOKEN=[redacted] now?', options: [{ label: 'Yes', description: 'Push to main' }] }])
 })
 
 test('a detail asks for no question without a pending request, and refuses a scheme the T3 app does not answer to', async (t) => {
-  writeFileSync(join(root, 'server/computer/t3code.json'), JSON.stringify({ servers: [] }))
   const calls = fakeT3(t, (name) => {
     if (name === 't3_environment_read') return { environmentId: 'env-1' }
     if (name === 't3_thread_read') return timeline({}, [item(0, 'user_message', 'Fix the header')], 0, false)
     throw new Error(`unexpected ${name}`)
   })
-  const detail = await threadDetail(server('tok'), 'th-1')
-  assert.equal(detail.link, 't3code://threads/env-1/th-1', 'T3’s own scheme when the instance names none')
+  const detail = await threadDetail(server('tok'), 'th-1', 't3code')
+  assert.equal(detail.link, 't3code://threads/env-1/th-1')
   assert.deepEqual(detail.questions, [])
   assert.ok(calls.includes('t3_thread_read {"threadId":"th-1","afterPosition":-1,"limit":100,"maxCharsPerItem":8000}'), 'a short timeline is read from its start')
 
-  writeFileSync(join(root, 'server/computer/t3code.json'), JSON.stringify({ scheme: 'javascript', servers: [] }))
   const before = calls.length
-  await assert.rejects(threadDetail(server('tok'), 'th-1'), /not one the T3 app answers to/)
+  await assert.rejects(threadDetail(server('tok'), 'th-1', 'javascript'), /not one the T3 app answers to/)
   assert.equal(calls.length, before, 'no T3 session is opened for a link that could not work')
 })
 
@@ -216,7 +213,7 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
   assert.deepEqual(calls, [], 'and none of them reached T3')
   const ok = await call('c1', 'th-1')
   assert.equal(ok.code, 200)
-  assert.equal(ok.body?.link, 't3code://threads/env-1/th-1')
+  assert.equal(ok.body?.link, 't3code://threads/env-1/th-1', 'T3’s own scheme when the instance names none')
   assert.equal(ok.body?.thread.agentId, 'bot')
 
   writeFileSync(join(root, 'server/computer/t3code.json'), JSON.stringify({ servers: [] }))

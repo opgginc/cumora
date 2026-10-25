@@ -93,11 +93,12 @@ export function redact(text: string): string {
   return out
 }
 
-/** One line of at most `max` characters. Redacts before it cuts: a cut can
- *  split a secret into a shape the patterns no longer match. */
-export function preview(raw: string | null | undefined, max: number): string | null {
+/** At most `max` characters, on one line unless `keepLines`. Redacts before
+ *  it cuts: a cut can split a secret into a shape the patterns no longer match. */
+export function preview(raw: string | null | undefined, max: number, { keepLines = false } = {}): string | null {
   if (!raw) return null
-  const flat = redact(raw).replace(/\s+/g, ' ').trim()
+  const redacted = redact(raw)
+  const flat = (keepLines ? redacted : redacted.replace(/\s+/g, ' ')).trim()
   if (!flat) return null
   return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat
 }

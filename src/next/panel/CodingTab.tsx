@@ -62,6 +62,14 @@ export const isOpenThread = (t: Thread): boolean => ACTIVE.has(t.status) || t.st
 /** The thread `?t3=` names: its T3 server and its id. */
 export const threadKey = (t: Pick<Thread, 'server' | 'threadId'>): string => `${t.server}:${t.threadId}`
 
+/** threadKey read back, or null. A thread id holds ':' itself (`mcp:<uuid>`)
+ *  and a server name never does (server/src/fork/coding.ts T3File), so the
+ *  key splits at its first ':'. */
+export function parseThreadKey(key: string): Pick<Thread, 'server' | 'threadId'> | null {
+  const at = key.indexOf(':')
+  return at > 0 && at < key.length - 1 ? { server: key.slice(0, at), threadId: key.slice(at + 1) } : null
+}
+
 // The last answer for each agent, so the list draws at once when the tab opens
 // again, and its entrance plays only the first time (src/next/AGENTS.md).
 const cache = new Map<string, Coding>()
@@ -217,7 +225,11 @@ function CopyMessage({ text }: { text: string }) {
  * ponytail: messages a running thread adds show on the next change of its
  * copy or a return to the app; poll here if someone watches a thread live.
  */
-function ThreadDetail({ id, listed, several }: { id: string; listed?: { t: Thread; agentId: string }; several: boolean }) {
+function ThreadDetail({ open, listed, several }: {
+  open: Pick<Thread, 'server' | 'threadId'>
+  listed?: { t: Thread; agentId: string }
+  several: boolean
+}) {
   const nt = useNT()
   const locale = useLocale()
   const [detail, setDetail] = useState<Detail | null>(null)
@@ -227,11 +239,11 @@ function ThreadDetail({ id, listed, several }: { id: string; listed?: { t: Threa
   // Several agents share the list: the detail names its own, as its row does.
   const agent = useParticipants((s) => (several && agentId ? s.byId[agentId] : undefined))
   const changed = listed ? `${listed.t.status} ${listed.t.updatedAt}` : null
-  useEffect(() => {
-    const at = id.indexOf(':')
-    const path = `/fork/coding/${encodeURIComponent(id.slice(0, at))}/${encodeURIComponent(id.slice(at + 1))}`
-    return follow(() => http<Detail>(path), (d) => { setDetail(d); setError(null) }, setError, false)
-  }, [id, changed])
+  const path = `/fork/coding/${encodeURIComponent(open.server)}/${encodeURIComponent(open.threadId)}`
+  useEffect(
+    () => follow(() => http<Detail>(path), (d) => { setDetail(d); setError(null) }, setError, false),
+    [path, changed],
+  )
 
   const bar = (
     <div className="nx-job__bar">
@@ -336,11 +348,13 @@ export function CodingList({ agents }: { agents: Participant[] }) {
   const nt = useNT()
   const route = useRoute()
   const { coding, fresh, error } = useCoding(agents.map((a) => a.id).join(' '))
-  const open = route.search.get('t3')
+  const key = route.search.get('t3')
+  // A malformed key names no thread, so the list shows.
+  const open = key ? parseThreadKey(key) : null
 
-  if (open) {
-    const listed = coding ? newestThreads(coding).find(({ t }) => threadKey(t) === open) : undefined
-    return <ThreadDetail key={open} id={open} listed={listed} several={agents.length > 1} />
+  if (key && open) {
+    const listed = coding ? newestThreads(coding).find(({ t }) => threadKey(t) === key) : undefined
+    return <ThreadDetail key={key} open={open} listed={listed} several={agents.length > 1} />
   }
   if (coding === null) {
     return error

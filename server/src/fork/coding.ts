@@ -39,7 +39,7 @@ import { join, resolve } from 'node:path'
 import type { Request, Response } from 'express'
 import type { AuthedRequest } from '../auth.js'
 import { postWake, type Wake } from './dispatch.js'
-import { redact } from './redact.js'
+import { preview, redact } from './redact.js'
 import { isPrivileged } from './roles.js'
 import { codingWakeKey, getForkStore, type CodingThread, type NewCodingThread } from './store.js'
 
@@ -92,7 +92,10 @@ const KINDS = new Map<string, ThreadDetail['messages'][number]['kind']>([
 const T3_SCHEME = /^t3code(?:-[a-z]+)?$/
 
 interface T3Server { name: string; url: string; tokenFile: string }
-/** T3_FILE: the T3 servers, and the scheme of the T3 app that opens their threads (`t3code` when it names none). */
+/** T3_FILE: the T3 servers, and the scheme of the T3 app that opens their
+ *  threads (`t3code` when it names none). A server's name is an MCP server
+ *  name, which holds no ':', so the client's `?t3=<server>:<thread id>` key
+ *  splits at its first ':' even though a thread id holds one (`mcp:<uuid>`). */
 interface T3File { scheme?: string; servers: T3Server[] }
 interface T3Thread {
   threadId: string
@@ -141,19 +144,17 @@ function t3File(): T3File {
   return JSON.parse(readFileSync(T3_FILE, 'utf8')) as T3File
 }
 
-/** The scheme of the T3 Code app build the instance's people open threads in:
- *  a build other than T3's own answers only to its own scheme. */
-function t3Scheme(): string {
-  const { scheme = 't3code' } = t3File()
-  if (!T3_SCHEME.test(scheme)) throw new Error(`the T3 app scheme ${scheme} is not one the T3 app answers to`)
-  return scheme
+/** A message as the detail shows it: preview() redacts before it cuts and
+ *  keeps the lines, and "…" also marks where T3 cut it. */
+function clip(text: string, cut: boolean): string {
+  const shown = preview(text, TEXT, { keepLines: true }) ?? ''
+  return cut && !shown.endsWith('…') ? `${shown}…` : shown
 }
 
-/** A message as the detail shows it: redacted first, since a cut can split a
- *  secret into a shape redact() no longer matches (./redact.ts preview). */
-function clip(text: string, cut: boolean): string {
-  const shown = redact(text).trim()
-  return cut || shown.length > TEXT ? `${shown.slice(0, TEXT).trimEnd()}…` : shown
+/** Ends a T3 session. One left open costs T3 a little memory until it
+ *  restarts, so a failed close is logged rather than failing the read. */
+async function closeQuietly(t3: T3Session, server: T3Server): Promise<void> {
+  await t3.close().catch((err: unknown) => console.warn(`[fork] could not close the T3 session on ${server.name}:`, err))
 }
 
 /** Opens an MCP session with a T3 server. */
@@ -244,17 +245,17 @@ export async function markedThreads(server: T3Server): Promise<ReadThread[]> {
     }
     return threads
   } finally {
-    // A session left open costs T3 a little memory until it restarts, so a
-    // failed close is logged rather than failing the poll.
-    await t3.close().catch((err: unknown) => console.warn(`[fork] could not close the T3 session on ${server.name}:`, err))
+    await closeQuietly(t3, server)
   }
 }
 
-/** What a thread's detail shows beyond the copy, read from T3 when it opens.
+/** What a thread's detail shows beyond the copy, read from T3 when it opens,
+ *  with its link in `scheme`: the scheme of the T3 app build the instance's
+ *  people use, since a build other than T3's own answers only to its own.
  *  Exported for tests, which fake T3 at fetch. */
-export async function threadDetail(server: T3Server, threadId: string): Promise<ThreadDetail> {
+export async function threadDetail(server: T3Server, threadId: string, scheme: string): Promise<ThreadDetail> {
   // Checked first: a mistyped scheme fails before T3 is read for nothing.
-  const scheme = t3Scheme()
+  if (!T3_SCHEME.test(scheme)) throw new Error(`the T3 app scheme ${scheme} is not one the T3 app answers to`)
   const t3 = await connect(server)
   try {
     const { environmentId } = await t3.call<{ environmentId: string }>('t3_environment_read', {})
@@ -291,7 +292,7 @@ export async function threadDetail(server: T3Server, threadId: string): Promise<
       link: `${scheme}://threads/${encodeURIComponent(environmentId)}/${encodeURIComponent(threadId)}`,
     }
   } finally {
-    await t3.close().catch((err: unknown) => console.warn(`[fork] could not close the T3 session on ${server.name}:`, err))
+    await closeQuietly(t3, server)
   }
 }
 
@@ -422,7 +423,8 @@ async function poll(server: T3Server): Promise<void> {
     }
     pollErrors.delete(server.name)
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    // Shown under every workspace's list, and T3's error text can quote a thread.
+    const message = redact(err instanceof Error ? err.message : String(err))
     if (failed !== message) console.error(`[fork] T3 poll of ${server.name} failed:`, err)
     pollErrors.set(server.name, message)
   }
@@ -535,19 +537,17 @@ export async function codingThread(requireCompany: Requirer, req: Request & Auth
   let detail: ThreadDetail | null = null
   let error: string | null = null
   try {
-    const server = t3File().servers.find((s) => s.name === t.server)
+    const { scheme = 't3code', servers } = t3File()
+    const server = servers.find((s) => s.name === t.server)
     if (!server) throw new Error(`the T3 server ${t.server} is no longer in this instance's list`)
-    detail = await threadDetail(server, t.threadId)
+    detail = await threadDetail(server, t.threadId, scheme)
   } catch (err) {
     // T3's own error text can quote the thread.
     error = redact(err instanceof Error ? err.message : String(err))
   }
   res.json({
     thread: { ...shownThread(t), agentId: t.agentId },
-    branch: detail?.branch ?? null,
-    questions: detail?.questions ?? [],
-    messages: detail?.messages ?? [],
-    link: detail?.link ?? null,
+    ...(detail ?? { branch: null, questions: [], messages: [], link: null }),
     error,
   })
 }

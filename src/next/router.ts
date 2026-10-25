@@ -134,13 +134,16 @@ export function withRoute(cur: Route, patch: Partial<RouteInput>): string {
   // `pane` picks a pane of one agent peek (panel/AgentDrawer.tsx), so it is
   // dropped whenever the peek closes or changes, even to another agent's.
   // `t3` opens a T3 thread in a thread list (panel/CodingTab.tsx), so it goes
-  // too, and also when a panel tab or a drawer pane changes: the list it opened
-  // in is gone. A caller that wants them passes them again in `params`.
+  // whenever that list goes: with the peek, and when a panel tab, a drawer
+  // pane or an agent page's view changes (tests/coding-t3-route.test.ts).
+  // A caller that wants them passes them again in `params`.
   const samePeek = patch.peek !== undefined && patch.peek !== null && cur.peek !== null
     && encodePeek(patch.peek) === encodePeek(cur.peek)
   const peekChanged = patch.peek !== undefined && !samePeek
   if (peekChanged) delete params.pane
-  if (peekChanged || patch.panel !== undefined || (patch.params !== undefined && 'pane' in patch.params)) delete params.t3
+  const listGone = peekChanged || patch.panel !== undefined
+    || (patch.params !== undefined && ('pane' in patch.params || 'view' in patch.params))
+  if (listGone) delete params.t3
   return href({
     section: patch.section ?? cur.section,
     id: patch.id !== undefined ? patch.id : cur.id,
