@@ -492,16 +492,19 @@ type Requirer = (req: Request & AuthedRequest) => Promise<{ userId: string; comp
 
 /** Whether the viewer may read what agents code, answering 403 when not:
  *  workspace owners and admins only, since a thread's title and messages are
- *  agent text, which can quote any room. Both coding routes go through here. */
-async function mayReadCoding(companyId: string, userId: string, res: Response): Promise<boolean> {
+ *  agent text, which can quote any room. Both coding routes go through here;
+ *  with `agentId` the same query also says whether it is an agent of the
+ *  workspace. null when refused. */
+async function mayReadCoding(companyId: string, userId: string, res: Response, agentId: string | null = null): Promise<{ agent: boolean } | null> {
   const { pool } = await import('../db/pool.js')
-  const { rows } = await pool.query<{ role: string | null }>(
-    'SELECT role FROM company_members WHERE company_id = $1 AND user_id = $2',
-    [companyId, userId],
+  const { rows } = await pool.query<{ role: string | null; agent: boolean }>(
+    `SELECT (SELECT role FROM company_members WHERE company_id = $1 AND user_id = $2) AS role,
+            EXISTS (SELECT 1 FROM participants WHERE id = $3 AND company_id = $1 AND kind = 'agent') AS agent`,
+    [companyId, userId, agentId],
   )
-  if (isPrivileged(rows[0]?.role)) return true
+  if (isPrivileged(rows[0]?.role)) return { agent: rows[0].agent }
   res.status(403).json({ error: 'only workspace owners and admins can read what agents code' })
-  return false
+  return null
 }
 
 /** A copied thread as both coding routes send it. */
@@ -510,17 +513,14 @@ const shownThread = (t: CodingThread) => ({
   pullRequests: t.pullRequests, createdAt: t.createdAt, updatedAt: t.updatedAt,
 })
 
-/** GET /api/fork/agents/:agentId/coding: an agent's newest threads. */
+/** GET /api/fork/agents/:agentId/coding: an agent's newest threads.
+ *  Exported for tests. */
 export async function agentCoding(requireCompany: Requirer, req: Request & AuthedRequest, res: Response): Promise<void> {
   const { userId, companyId } = await requireCompany(req)
-  if (!(await mayReadCoding(companyId, userId, res))) return
   const agentId = String(req.params.agentId)
-  const { pool } = await import('../db/pool.js')
-  const { rows } = await pool.query<{ agent: boolean }>(
-    `SELECT EXISTS (SELECT 1 FROM participants WHERE id = $1 AND company_id = $2 AND kind = 'agent') AS agent`,
-    [agentId, companyId],
-  )
-  if (!rows[0].agent) {
+  const gate = await mayReadCoding(companyId, userId, res, agentId)
+  if (!gate) return
+  if (!gate.agent) {
     res.status(404).json({ error: 'not found' })
     return
   }

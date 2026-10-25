@@ -21,6 +21,10 @@ test('t3 stays while its thread list stays', () => {
   const room = parseRoute('/next/c/r1', `?panel=coding&t3=${KEY}`)
   assert.equal(t3(withRoute(room, { params: { q: 'x' } })), KEY)
   assert.equal(t3(withRoute(room, { threadId: null })), KEY)
+  // The agent menu's Mention passes the panel and the absent peek as they are.
+  assert.equal(t3(withRoute(room, { peek: null, threadId: null, panel: 'coding' })), KEY, 'the same panel and no peek')
+  const drawer = parseRoute('/next/c/r1', `?peek=agent:a&pane=jobs&t3=${KEY}`)
+  assert.equal(t3(withRoute(drawer, { params: { pane: 'jobs' } })), KEY, 'the same pane')
 })
 
 test('t3 goes with the list it opened in', () => {

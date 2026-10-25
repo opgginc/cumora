@@ -18,8 +18,9 @@ export function parseThreadKey(key: string): { server: string; threadId: string 
 // One pass, left to right, so code is taken whole before an image inside it
 // is seen: a fence (``` or ~~~, three or more) runs to the same fence on a
 // line of its own, or to the end of a message cut inside it; then inline
-// code; then an image that is not on the web.
-const PART = /(`{3,}|~{3,})[\s\S]*?(?:\n\1|$)|`[^`\n]*`|!\[([^\]]*)\]\(\s*(?!https?:\/\/)([^)\s]*)[^)]*\)/gi
+// code, closed by a run of as many backticks as opened it; then an image that
+// is not on the web.
+const PART = /(`{3,}|~{3,})[\s\S]*?(?:\n\1|$)|(`+)[^\n]*?(?<!`)\2(?!`)|!\[([^\]]*)\]\(\s*(?!https?:\/\/)([^)\s]*)[^)]*\)/gi
 
 /**
  * `text` with each image this app cannot load replaced by `label(name)` in
@@ -29,6 +30,6 @@ const PART = /(`{3,}|~{3,})[\s\S]*?(?:\n\1|$)|`[^`\n]*`|!\[([^\]]*)\]\(\s*(?!htt
  * shown as written, so the copy button's text and the screen agree there.
  */
 export function loadableImages(text: string, label: (name: string) => string): string {
-  return text.replace(PART, (part: string, _fence: string | undefined, alt: string | undefined, src: string | undefined) =>
+  return text.replace(PART, (part: string, _fence: string | undefined, _ticks: string | undefined, alt: string | undefined, src: string | undefined) =>
     src === undefined ? part : `*${label(alt?.trim() || src.split('/').pop() || src).replace(/[\\*_[\]]/g, '\\$&')}*`)
 }

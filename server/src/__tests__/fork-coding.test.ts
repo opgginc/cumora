@@ -22,7 +22,7 @@ writeFileSync(join(root, 'server/computer/t3code/tok'), 'token-123\n')
 writeFileSync(join(root, 'server/computer/t3code/bad'), 'token-line-one\ntoken-line-two\n')
 const cwd = process.cwd()
 process.chdir(root)
-const { codingThread, markedThreads, parseMark, threadDetail } = await import('../fork/coding.js')
+const { agentCoding, codingThread, markedThreads, parseMark, threadDetail } = await import('../fork/coding.js')
 process.chdir(cwd)
 after(() => rmSync(root, { recursive: true, force: true }))
 
@@ -211,7 +211,8 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
   process.env.OPENAI_API_KEY ??= 'test-key'
   const [{ pool }, { getForkStore }] = await Promise.all([import('../db/pool.js'), import('../fork/store.js')])
   let role = 'member'
-  t.mock.method(pool, 'query', async () => ({ rows: [{ role }] }))
+  let agent = true
+  t.mock.method(pool, 'query', async () => ({ rows: [{ role, agent }] }))
   // The store opens in the temporary root: coding.ts loaded it from there.
   ;(await getForkStore()).saveCodingThreads([{
     server: 't3code', threadId: 'th-1', companyId: 'c1', agentId: 'bot', conversationId: null, title: 'Fix the header',
@@ -259,4 +260,21 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
   assert.equal(gone.code, 200, 'a T3 server taken off the list still leaves the copy')
   assert.match(gone.body?.error ?? '', /no longer in this instance/)
   assert.equal(gone.body?.link, null)
+
+  // The list route goes through the same gate, one query for the role and the agent.
+  const list = async () => {
+    const res = {
+      code: 200,
+      body: null as { threads: Array<{ threadId: string }> } | null,
+      status(code: number) { this.code = code; return this },
+      json(body: never) { this.body = body; return this },
+    }
+    await agentCoding(async () => ({ userId: 'u1', companyId: 'c1' }), { params: { agentId: 'bot' } } as never, res as never)
+    return res
+  }
+  assert.deepEqual((await list()).body?.threads.map((x) => x.threadId), ['th-1'])
+  agent = false
+  assert.equal((await list()).code, 404, 'not an agent of the workspace')
+  role = 'member'
+  assert.equal((await list()).code, 403, 'a member is refused the list too')
 })

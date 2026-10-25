@@ -137,12 +137,14 @@ export function withRoute(cur: Route, patch: Partial<RouteInput>): string {
   // whenever that list goes: with the peek, and when a panel tab, a drawer
   // pane or an agent page's view changes (tests/coding-t3-route.test.ts).
   // A caller that wants them passes them again in `params`.
-  const samePeek = patch.peek !== undefined && patch.peek !== null && cur.peek !== null
-    && encodePeek(patch.peek) === encodePeek(cur.peek)
+  // Only a value that differs counts as a change: a caller may pass the panel
+  // or the (absent) peek as they are, like the agent menu's Mention.
+  const samePeek = patch.peek === null ? cur.peek === null
+    : patch.peek !== undefined && cur.peek !== null && encodePeek(patch.peek) === encodePeek(cur.peek)
   const peekChanged = patch.peek !== undefined && !samePeek
   if (peekChanged) delete params.pane
-  const listGone = peekChanged || patch.panel !== undefined
-    || (patch.params !== undefined && ('pane' in patch.params || 'view' in patch.params))
+  const changes = (key: string) => patch.params !== undefined && key in patch.params && (patch.params[key] ?? null) !== cur.search.get(key)
+  const listGone = peekChanged || (patch.panel !== undefined && patch.panel !== cur.panel) || changes('pane') || changes('view')
   if (listGone) delete params.t3
   return href({
     section: patch.section ?? cur.section,

@@ -29,6 +29,7 @@ test('images on the web, links and code stay as written', () => {
     '![shot](https://example.com/shot.png)',
     '[log](/tmp/log.txt)',
     'Use `![x](/tmp/x.png)` in a reply',
+    'Or ``![x](/tmp/x.png) with ` inside`` in a reply',
     '```md\n![x](/tmp/x.png)\n```',
     '~~~\n![x](/tmp/x.png)\n~~~',
     '````md\n```\n![x](/tmp/x.png)\n```\n````',
