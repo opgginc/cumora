@@ -2,7 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import type { AuthedRequest } from '../auth.js'
 import { ForkLimitError, getForkStore } from './store.js'
 import { agentHandbook } from './handbook.js'
-import { agentCoding, startCodingPoller } from './coding.js'
+import { agentCoding, codingThread, startCodingPoller } from './coding.js'
 import { startRecorder } from './recorder.js'
 import { startMoods } from './mood.js'
 import { stopAgent } from './stop.js'
@@ -112,6 +112,7 @@ export function createForkRouter(deps: ForkRouterDeps): Router {
 
   router.get('/agents/:agentId/handbook', (req, res) => agentHandbook(deps.requireCompany, req, res))
   router.get('/agents/:agentId/coding', (req, res) => agentCoding(deps.requireCompany, req, res))
+  router.get('/coding/:server/:threadId', (req, res) => codingThread(deps.requireCompany, req, res))
   router.get('/agents/:agentId/screen', (req, res) => agentScreen(deps.requireCompany, req, res))
   router.post('/agents/:agentId/screen/input', (req, res) => agentScreenInput(deps.requireCompany, req, res))
   router.post('/rooms/:conversationId/agents/:agentId/stop', (req, res) => stopAgent(deps.requireCompany, req, res))

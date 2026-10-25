@@ -1,6 +1,7 @@
 /**
  * The agent drawer: an agent's screen, T3 Code threads and profile in the room
- * panel, at `peek=agent:<id>` with `&pane=screen|jobs|profile`. The agent
+ * panel, at `peek=agent:<id>` with `&pane=screen|jobs|profile` (and `&t3=` for
+ * one of its threads, CodingTab.tsx). The agent
  * menu, the Members tab and @mentions open it inside a chat, so the
  * conversation stays in view; the Agents section shows the same parts as the
  * agent's workspace. Screen and threads are for owners and admins (the routes

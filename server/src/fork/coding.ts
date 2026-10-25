@@ -23,6 +23,11 @@
  * list threads but cannot start one. They last 30 days without a refresh, so a
  * failing server is shown under the list instead of the list going quiet.
  *
+ * A row of the list opens the thread's detail, which reads T3 when it opens:
+ * the thread's branch, its newest messages and the question it waits on, and
+ * the address the T3 Code app opens it at. A Read only token cannot answer a
+ * question, so the detail sends the viewer to the T3 app for that.
+ *
  * When a thread ends or waits for the answer to a question, the agent that
  * launched it is woken through ./dispatch.ts, like a trigger (./triggers.ts). The hook cannot
  * tell which room the agent was working in, so the wake goes to the room of the
@@ -67,8 +72,27 @@ const STALE_MS = 30 * 60_000
 // ponytail: the Coding tab shows each agent's 10 most recently changed
 // threads; page the route if someone needs the older ones there.
 const LIST = 10
+// A thread's detail shows its newest MESSAGES, each cut to TEXT characters. T3
+// sends T3_TEXT, well past TEXT, so redact() sees a secret whole before the
+// cut. T3 pages a timeline from its start and counts every item in it, tool
+// calls too, so the messages are looked for among the newest TAIL items.
+// ponytail: a thread busy with tools for longer than TAIL items shows no
+// messages; the T3 app shows them all.
+const MESSAGES = 4
+const TEXT = 800
+const T3_TEXT = 8_000
+const TAIL = 200
+// T3's message items, as the detail names them.
+const KINDS = new Map<string, ThreadDetail['messages'][number]['kind']>([
+  ['user_message', 'request'], ['assistant_message', 'reply'], ['proposed_plan', 'plan'],
+])
+// The schemes the T3 Code app answers to: `t3code`, and `t3code-dev` or
+// `t3code-preview` for its other builds (T3's packages/shared/src/promptLinks.ts).
+const T3_SCHEME = /^t3code(?:-[a-z]+)?$/
 
 interface T3Server { name: string; url: string; tokenFile: string }
+/** T3_FILE: the T3 servers, and the scheme of the T3 app that opens their threads (`t3code` when it names none). */
+interface T3File { scheme?: string; servers: T3Server[] }
 interface T3Thread {
   threadId: string
   title: string
@@ -81,6 +105,23 @@ interface T3Thread {
 }
 /** A marked thread as read from T3, with its question if it waits for an answer. */
 type ReadThread = Omit<T3Thread, 'pullRequests'> & Pick<CodingThread, 'pullRequests' | 'requestId'>
+/** What t3_thread_read answers, as far as the detail reads it. */
+interface T3Timeline {
+  thread: { itemCount: number; pendingRequestCount: number; branch: string | null }
+  items: Array<{ position: number; type: string; text: string | null; textTruncated: boolean; updatedAt: string }>
+  nextPosition: number | null
+  hasMore: boolean
+}
+/** One question of a pending request, as t3_pending_request_read answers it. */
+interface T3Question { header: string; question: string; options: Array<{ label: string; description: string }> }
+/** What a thread's detail shows beyond its copy, its text redacted (threadDetail). */
+export interface ThreadDetail {
+  branch: string | null
+  questions: Array<{ header: string; text: string; options: Array<{ label: string; description: string }> }>
+  messages: Array<{ id: number; kind: 'request' | 'reply' | 'plan'; text: string; at: string }>
+  /** Where the T3 Code app opens the thread. */
+  link: string
+}
 interface ToolResult { isError?: boolean; structuredContent?: unknown; content?: Array<{ text?: string }> }
 interface T3Session {
   call: <T>(name: string, args: Record<string, unknown>) => Promise<T>
@@ -94,9 +135,25 @@ export function parseMark(title: string): { agentId: string; title: string } | n
   return m ? { agentId: m[1], title: title.slice(m[0].length) } : null
 }
 
-function t3Servers(): T3Server[] {
-  if (!existsSync(T3_FILE)) return []
-  return (JSON.parse(readFileSync(T3_FILE, 'utf8')) as { servers: T3Server[] }).servers
+function t3File(): T3File {
+  if (!existsSync(T3_FILE)) return { servers: [] }
+  return JSON.parse(readFileSync(T3_FILE, 'utf8')) as T3File
+}
+
+/** The address the T3 Code app opens a thread at, in the scheme of the app
+ *  build the instance's people use: a build other than T3's own answers only
+ *  to its own scheme. */
+function t3Link(environmentId: string, threadId: string): string {
+  const { scheme = 't3code' } = t3File()
+  if (!T3_SCHEME.test(scheme)) throw new Error(`the T3 app scheme ${scheme} is not one the T3 app answers to`)
+  return `${scheme}://threads/${encodeURIComponent(environmentId)}/${encodeURIComponent(threadId)}`
+}
+
+/** A message as the detail shows it: redacted first, since a cut can split a
+ *  secret into a shape redact() no longer matches (./redact.ts preview). */
+function clip(text: string, cut: boolean): string {
+  const shown = redact(text).trim()
+  return cut || shown.length > TEXT ? `${shown.slice(0, TEXT).trimEnd()}…` : shown
 }
 
 /** Opens an MCP session with a T3 server. */
@@ -189,6 +246,48 @@ export async function markedThreads(server: T3Server): Promise<ReadThread[]> {
   } finally {
     // A session left open costs T3 a little memory until it restarts, so a
     // failed close is logged rather than failing the poll.
+    await t3.close().catch((err: unknown) => console.warn(`[fork] could not close the T3 session on ${server.name}:`, err))
+  }
+}
+
+/** What a thread's detail shows beyond the copy, read from T3 when it opens.
+ *  Exported for tests, which fake T3 at fetch. */
+export async function threadDetail(server: T3Server, threadId: string): Promise<ThreadDetail> {
+  const t3 = await connect(server)
+  try {
+    const { environmentId } = await t3.call<{ environmentId: string }>('t3_environment_read', {})
+    // The first read only learns how long the timeline is.
+    const { thread } = await t3.call<T3Timeline>('t3_thread_read', { threadId, limit: 1, maxCharsPerItem: 1 })
+    const items: T3Timeline['items'] = []
+    for (let after = Math.max(-1, thread.itemCount - TAIL - 1); ;) {
+      const page = await t3.call<T3Timeline>('t3_thread_read', { threadId, afterPosition: after, limit: 100, maxCharsPerItem: T3_TEXT })
+      items.push(...page.items)
+      if (!page.hasMore || page.nextPosition === null) break
+      after = page.nextPosition
+    }
+    // A pending request may also be an approval, which T3 does not list here.
+    const [requestId] = thread.pendingRequestCount > 0
+      ? (await t3.call<{ requestIds: string[] }>('t3_pending_request_list', { threadId })).requestIds
+      : []
+    const questions = requestId
+      ? (await t3.call<{ questions: T3Question[] }>('t3_pending_request_read', { threadId, requestId })).questions
+      : []
+    const messages = items.flatMap((m) => {
+      const kind = KINDS.get(m.type)
+      return kind ? [{ m, kind }] : []
+    }).slice(-MESSAGES)
+    return {
+      // The agent may have named the branch, so it is agent text too.
+      branch: thread.branch === null ? null : redact(thread.branch),
+      questions: questions.map((q) => ({
+        header: redact(q.header),
+        text: redact(q.question),
+        options: q.options.map((o) => ({ label: redact(o.label), description: redact(o.description) })),
+      })),
+      messages: messages.map(({ m, kind }) => ({ id: m.position, kind, text: clip(m.text ?? '', m.textTruncated), at: m.updatedAt })),
+      link: t3Link(environmentId, threadId),
+    }
+  } finally {
     await t3.close().catch((err: unknown) => console.warn(`[fork] could not close the T3 session on ${server.name}:`, err))
   }
 }
@@ -352,7 +451,7 @@ let started = false
 export function startCodingPoller(): void {
   if (started) return
   started = true
-  for (const server of t3Servers()) {
+  for (const server of t3File().servers) {
     let read = 0
     // The same failure on every tick is logged once.
     let failed: string | null = null
@@ -402,6 +501,49 @@ export async function agentCoding(requireCompany: Requirer, req: Request & Authe
       server: t.server, threadId: t.threadId, title: redact(t.title), status: t.status,
       pullRequests: t.pullRequests, createdAt: t.createdAt, updatedAt: t.updatedAt,
     })),
-    servers: t3Servers().map((s) => ({ name: s.name, error: pollErrors.get(s.name) ?? null })),
+    servers: t3File().servers.map((s) => ({ name: s.name, error: pollErrors.get(s.name) ?? null })),
+  })
+}
+
+/** GET /api/fork/coding/:server/:threadId, for workspace owners and admins like
+ *  the list: one thread as copied, with what T3 holds of it now (threadDetail).
+ *  The server's token reads every thread on its T3 server, so only a thread
+ *  copied for an agent of the viewer's workspace is read. When T3 cannot be
+ *  read, the copy comes with the reason. */
+export async function codingThread(requireCompany: Requirer, req: Request & AuthedRequest, res: Response): Promise<void> {
+  const { userId, companyId } = await requireCompany(req)
+  const { pool } = await import('../db/pool.js')
+  const gate = await pool.query<{ role: string | null }>(
+    'SELECT role FROM company_members WHERE company_id = $1 AND user_id = $2',
+    [companyId, userId],
+  )
+  if (!isPrivileged(gate.rows[0]?.role)) {
+    res.status(403).json({ error: 'only workspace owners and admins can read what agents code' })
+    return
+  }
+  const t = (await getForkStore()).codingThread(companyId, String(req.params.server), String(req.params.threadId))
+  if (!t) {
+    res.status(404).json({ error: 'not found' })
+    return
+  }
+  let detail: ThreadDetail | null = null
+  let error: string | null = null
+  try {
+    const server = t3File().servers.find((s) => s.name === t.server)
+    if (!server) throw new Error(`the T3 server ${t.server} is no longer in this instance's list`)
+    detail = await threadDetail(server, t.threadId)
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err)
+  }
+  res.json({
+    thread: {
+      server: t.server, threadId: t.threadId, agentId: t.agentId, title: redact(t.title), status: t.status,
+      pullRequests: t.pullRequests, createdAt: t.createdAt, updatedAt: t.updatedAt,
+    },
+    branch: detail?.branch ?? null,
+    questions: detail?.questions ?? [],
+    messages: detail?.messages ?? [],
+    link: detail?.link ?? null,
+    error,
   })
 }

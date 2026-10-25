@@ -328,6 +328,8 @@ test('a coding thread keeps its first agent and room, and wakes its agent once p
   assert.equal(store.codingThreadIn('t3code-m4', ['running']), false, 'per server')
   assert.deepEqual(store.codingWakesDue('t3code-m4', ['running']), [], 'per server')
   assert.deepEqual(store.codingThreads('c2', 'bot', 10), [], 'scoped by company')
+  assert.equal(store.codingThread('c1', 't3code', 'th-1')?.status, 'running')
+  assert.equal(store.codingThread('c2', 't3code', 'th-1'), null, 'a detail is scoped by company too')
   assert.deepEqual(due(), [], 'a running thread wakes nobody')
 
   // Two questions in one run wake the agent twice; the answer in between wakes nobody.
