@@ -26,7 +26,7 @@ import { IconButton, Spinner } from '../ui/primitives'
 import { ICheck, ICopy, IInfo, IStop, IX } from '../ui/icons'
 import { errText } from '../sections/calendar/parts'
 import { useRoomAgents } from '../chat/ChatView'
-import { loadableImages } from './codingMarkdown'
+import { loadableImages, parseThreadKey, threadKey } from './codingText'
 import { JobBar } from './JobBar'
 
 export interface Thread {
@@ -60,17 +60,6 @@ const STOPPED = new Set(['interrupted', 'cancelled', 'rolled_back'])
 
 /** Still going: running, or stopped on a question for someone. */
 export const isOpenThread = (t: Thread): boolean => ACTIVE.has(t.status) || t.status === 'question'
-
-/** The thread `?t3=` names: its T3 server and its id. */
-export const threadKey = (t: Pick<Thread, 'server' | 'threadId'>): string => `${t.server}:${t.threadId}`
-
-/** threadKey read back, or null. A thread id holds ':' itself (`mcp:<uuid>`)
- *  and a server name never does (server/src/fork/coding.ts T3File), so the
- *  key splits at its first ':'. */
-export function parseThreadKey(key: string): Pick<Thread, 'server' | 'threadId'> | null {
-  const at = key.indexOf(':')
-  return at > 0 && at < key.length - 1 ? { server: key.slice(0, at), threadId: key.slice(at + 1) } : null
-}
 
 // The last answer for each agent, so the list draws at once when the tab opens
 // again, and its entrance plays only the first time (src/next/AGENTS.md).

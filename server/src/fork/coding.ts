@@ -123,9 +123,11 @@ export interface ThreadDetail {
   branch: string | null
   questions: Array<{ id: string; header: string; text: string; options: Array<{ label: string; description: string }> }>
   messages: Array<{ id: number; kind: 'request' | 'reply' | 'plan'; text: string; at: string }>
-  /** Where the T3 Code app opens the thread. */
-  link: string
+  /** Where the T3 Code app opens the thread; null when T3 could not be read. */
+  link: string | null
 }
+/** What the detail route sends when T3 could not be read: the copy alone. */
+const NO_DETAIL: ThreadDetail = { branch: null, questions: [], messages: [], link: null }
 interface ToolResult { isError?: boolean; structuredContent?: unknown; content?: Array<{ text?: string }> }
 interface T3Session {
   call: <T>(name: string, args: Record<string, unknown>) => Promise<T>
@@ -144,10 +146,17 @@ function t3File(): T3File {
   return JSON.parse(readFileSync(T3_FILE, 'utf8')) as T3File
 }
 
+// The unfinished end of a text T3 cut: a private key whose END was cut away,
+// else the token the cut went through. Neither matches a pattern in redact().
+// The text is at most T3_TEXT long and BEGIN markers are rare, so the scan
+// from each one to the end stays small.
+const UNFINISHED = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----(?![\s\S]*-----END [A-Z0-9 ]*PRIVATE KEY)[\s\S]*$|(?<!\S)\S+$/
+
 /** A message as the detail shows it: preview() redacts before it cuts and
- *  keeps the lines, and "…" also marks where T3 cut it. */
+ *  keeps the lines. A text T3 already cut loses its unfinished end first, and
+ *  "…" marks the cut. */
 function clip(text: string, cut: boolean): string {
-  const shown = preview(text, TEXT, { keepLines: true }) ?? ''
+  const shown = preview(cut ? text.replace(UNFINISHED, '') : text, TEXT, { keepLines: true }) ?? ''
   return cut && !shown.endsWith('…') ? `${shown}…` : shown
 }
 
@@ -547,7 +556,7 @@ export async function codingThread(requireCompany: Requirer, req: Request & Auth
   }
   res.json({
     thread: { ...shownThread(t), agentId: t.agentId },
-    ...(detail ?? { branch: null, questions: [], messages: [], link: null }),
+    ...(detail ?? NO_DETAIL),
     error,
   })
 }

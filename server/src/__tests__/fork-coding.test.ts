@@ -155,9 +155,33 @@ test('a detail reads the newest messages from the end of the timeline and the qu
     [270, 'reply', 'Pushed with [redacted]'],
     [300, 'plan', '1. Fix it'],
     [400, 'reply', `${'b'.repeat(3_999)}…`],
-    [449, 'reply', 'Cut by T3…'],
-  ], 'the newest four, cut after redaction, and marked where T3 cut them')
+    [449, 'reply', 'Cut by…'],
+  ], 'the newest four, cut after redaction, and marked where T3 cut them, without the token T3 cut through')
   assert.deepEqual(detail.questions, [{ id: 'a', header: 'Deploy', text: 'Push with GITHUB_TOKEN=[redacted] now?', options: [{ label: 'Yes', description: 'Push to main' }] }])
+})
+
+test('a message T3 cut loses its unfinished key or token before redaction, so no part of a secret is shown', async (t) => {
+  const pem = (body: string, end: boolean) => `-----BEGIN RSA PRIVATE KEY-----\n${body}${end ? '\n-----END RSA PRIVATE KEY-----' : ''}`
+  fakeT3(t, (name, args) => {
+    if (name === 't3_environment_read') return { environmentId: 'env-1' }
+    if (name === 't3_thread_read' && args.limit === 1) return timeline({ itemCount: 2 }, [], null, true)
+    if (name === 't3_thread_read') {
+      return timeline({ itemCount: 2 }, [
+        // The first key shrinks to [redacted], which pulls the second, cut by T3
+        // before its END, into the characters the detail shows.
+        item(0, 'assistant_message', `Two keys:\n${pem('A'.repeat(3_000), true)}\n${pem('B'.repeat(4_000), false)}`, true),
+        // A token cut too short for its pattern.
+        item(1, 'assistant_message', `Pushed with ghp_${'c'.repeat(10)}`, true),
+      ], 1, false)
+    }
+    throw new Error(`unexpected ${name}`)
+  })
+
+  const [keys, token] = (await threadDetail(server('tok'), 'th-1', 't3code')).messages
+  assert.ok(keys.text.includes('[redacted]'), 'the whole key is redacted')
+  assert.ok(!keys.text.includes('BBBB'), 'the cut key shows nothing of its body')
+  assert.ok(keys.text.endsWith('…'))
+  assert.equal(token.text, 'Pushed with…', 'the cut token goes')
 })
 
 test('a detail asks for no question without a pending request, and refuses a scheme the T3 app does not answer to', async (t) => {

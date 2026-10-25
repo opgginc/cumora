@@ -15,11 +15,11 @@ import type { Conversation } from '@/types'
 import { dateTime } from '../format'
 import { haptic } from '../haptics'
 import { useNT } from '../i18n'
-import { getRoute, goBack, linkClick, withRoute } from '../router'
+import { getRoute, linkClick, withRoute } from '../router'
 import { Avatar } from '../ui/Avatar'
 import { Dialog, Spinner, Switch } from '../ui/primitives'
 import { IChevronRight } from '../ui/icons'
-import { JobBar } from './JobBar'
+import { closeJob, JobBar } from './JobBar'
 import { errText, IPlay } from '../sections/calendar/parts'
 
 export interface Trigger {
@@ -117,7 +117,7 @@ export function TriggerView({ t, onChanged }: { t: Trigger; onChanged: () => Pro
     const timer = window.setTimeout(() => setNote(null), 2500)
     return () => window.clearTimeout(timer)
   }, [note])
-  const close = () => goBack(withRoute(getRoute(), { params: { trigger: null } }))
+  const close = () => closeJob('trigger')
   return (
     <div className="nx-job">
       <JobBar param="trigger" label={nt('routines.back')} title={t.title}>

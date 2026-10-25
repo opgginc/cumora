@@ -29,7 +29,8 @@ import { getRoute, href, navigate, useRoute, withRoute } from './router'
 import { Avatar } from './ui/Avatar'
 import { anchorFrom, Menu, type MenuAnchor, type MenuEntry, type MenuItem } from './ui/primitives'
 import { IAgents, IAt, ICode, ICompose, IComputer, ICopy, IStop } from './ui/icons'
-import { isOpenThread, look, newestThreads, threadKey, threadTime, useCoding, type Thread } from './panel/CodingTab'
+import { isOpenThread, look, newestThreads, threadTime, useCoding, type Thread } from './panel/CodingTab'
+import { threadKey } from './panel/codingText'
 import { agentState, isLive, StateText, useHost, useSeesWork } from './sections/agents/shared'
 import { bindAgentRefs, hasAgentMenu } from './agentRefs'
 
@@ -71,7 +72,7 @@ export function bindAgentMenu(root: HTMLElement): () => void {
 
 /** Opens one of the agent's panes: the room panel's drawer inside a chat,
  *  the agent's page in Agents anywhere else. `t3` opens one of its threads
- *  in the thread list (CodingTab.tsx threadKey). */
+ *  in the thread list (panel/codingText.ts threadKey). */
 export function openAgentPane(id: string, pane: AgentPane, t3: string | null = null): void {
   const r = getRoute()
   if (r.section === 'chats' && r.id) {
