@@ -41,7 +41,7 @@ type AgentCoding = Coding & { agentId: string }
 interface Detail {
   thread: Thread & { agentId: string }
   branch: string | null
-  questions: Array<{ header: string; text: string; options: Array<{ label: string; description: string }> }>
+  questions: Array<{ id: string; header: string; text: string; options: Array<{ label: string; description: string }> }>
   messages: Array<{ id: number; kind: 'request' | 'reply' | 'plan'; text: string; at: string }>
   /** Where the T3 Code app opens the thread; null when T3 could not be read. */
   link: string | null
@@ -92,20 +92,38 @@ export const newestThreads = (coding: AgentCoding[]): Array<{ t: Thread; agentId
   .flatMap((c) => c.threads.map((t) => ({ t, agentId: c.agentId })))
   .sort((a, b) => b.t.updatedAt.localeCompare(a.t.updatedAt))
 
-/** Runs `load` now and again whenever the server's copy may have changed;
- *  returns what stops it. */
-function followCoding(load: () => void): () => void {
+/**
+ * Reads now and again when the app comes back to the foreground, and with
+ * `socket` also whenever the server's copy may have changed; only the newest
+ * read lands. Returns what stops it.
+ */
+function follow<T>(read: () => Promise<T>, land: (data: T) => void, fail: (error: string) => void, socket: boolean): () => void {
+  let live = true
+  // An event can start a read while an older one is still out; only the
+  // newest may land.
+  let latest = 0
+  const load = async () => {
+    if (document.hidden) return
+    const mine = ++latest
+    try {
+      const data = await read()
+      if (live && mine === latest) land(data)
+    } catch (e) {
+      if (live && mine === latest) fail(errText(e))
+    }
+  }
   // Back from the background, the copy may be minutes old.
-  const onVisible = () => { if (!document.hidden) load() }
+  const onVisible = () => { if (!document.hidden) void load() }
   // `fork.coding` (a fork event, outside the client's event union) says the
   // server's copy changed. `hello` opens every connection, after events missed
   // while the socket was down.
-  const off = ws.on((e) => {
-    if (e.type === 'hello' || (e as { type: string }).type === 'fork.coding') load()
-  })
-  load()
+  const off = socket
+    ? ws.on((e) => { if (e.type === 'hello' || (e as { type: string }).type === 'fork.coding') void load() })
+    : () => {}
+  void load()
   document.addEventListener('visibilitychange', onVisible)
   return () => {
+    live = false
     off()
     document.removeEventListener('visibilitychange', onVisible)
   }
@@ -123,33 +141,21 @@ export function useCoding(ids: string, enabled = true): { coding: AgentCoding[] 
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     if (!enabled) return
-    let live = true
-    // An event can start a read while an older one is still out; only the
-    // newest may draw.
-    let latest = 0
     const hit = cached(ids)
     setCoding(hit)
     setFresh(hit === null)
     setError(null)
-    const load = async () => {
-      if (document.hidden) return
-      const mine = ++latest
-      try {
-        const lists = await Promise.all(ids.split(' ').map(async (agentId) =>
-          ({ agentId, ...(await http<Coding>(`/fork/agents/${encodeURIComponent(agentId)}/coding`)) })))
-        if (!live || mine !== latest) return
+    return follow(
+      () => Promise.all(ids.split(' ').map(async (agentId) =>
+        ({ agentId, ...(await http<Coding>(`/fork/agents/${encodeURIComponent(agentId)}/coding`)) }))),
+      (lists) => {
         for (const { agentId, threads, servers } of lists) cache.set(agentId, { threads, servers })
         setCoding(lists)
         setError(null)
-      } catch (e) {
-        if (live && mine === latest) setError(errText(e))
-      }
-    }
-    const stop = followCoding(() => void load())
-    return () => {
-      live = false
-      stop()
-    }
+      },
+      setError,
+      true,
+    )
   }, [ids, enabled])
   // While reads are off, the state can still hold the lists of agents asked
   // about before (the menu reopened on someone else); those never show.
@@ -173,8 +179,8 @@ function CodingRow({ t, to, agent, server }: { t: Thread; to: string; agent?: Pa
         {/* The avatar is hidden from screen readers, so the hint names the agent. */}
         <span className="nx-row__hint">{[agent?.name, nt(label), when, server ? t.server : null].filter(Boolean).join(' · ')}</span>
       </a>
-      {/* One chip leaves the title room; the detail lists every pull request,
-          and the count, under the row's link, opens it. */}
+      {/* One chip leaves the title room. The detail lists every pull request,
+          and a tap on the count opens the detail like the rest of the row. */}
       {pr && <a className="nx-chip nx-mono nx-coding__pr" href={pr.url} target="_blank" rel="noopener noreferrer">#{pr.number}</a>}
       {t.pullRequests.length > 1 && <span className="nx-chip nx-mono">+{t.pullRequests.length - 1}</span>}
     </div>
@@ -183,8 +189,11 @@ function CodingRow({ t, to, agent, server }: { t: Thread; to: string; agent?: Pa
 
 /**
  * One thread in place of the list: its copy at once when the list holds it,
- * then what T3 holds of it now, read again whenever the server's copy changes.
- * A question is answered in the T3 app: the server's T3 token reads only.
+ * then what T3 holds of it now. Each read opens a T3 session on the
+ * developer's machine, so T3 is read again only when this thread's copy in
+ * the list changes (the list follows the workspace's events) or the app comes
+ * back to the foreground, not on every change in the workspace. A question is
+ * answered in the T3 app: the server's T3 token reads only.
  * ponytail: messages a running thread adds show on the next change of its
  * copy or a return to the app; poll here if someone watches a thread live.
  */
@@ -197,29 +206,12 @@ function ThreadDetail({ id, listed, several }: { id: string; listed?: { t: Threa
   const agentId = detail?.thread.agentId ?? listed?.agentId
   // Several agents share the list: the detail names its own, as its row does.
   const agent = useParticipants((s) => (several && agentId ? s.byId[agentId] : undefined))
+  const changed = listed ? `${listed.t.status} ${listed.t.updatedAt}` : null
   useEffect(() => {
-    let live = true
-    let latest = 0
     const at = id.indexOf(':')
     const path = `/fork/coding/${encodeURIComponent(id.slice(0, at))}/${encodeURIComponent(id.slice(at + 1))}`
-    const load = async () => {
-      if (document.hidden) return
-      const mine = ++latest
-      try {
-        const d = await http<Detail>(path)
-        if (!live || mine !== latest) return
-        setDetail(d)
-        setError(null)
-      } catch (e) {
-        if (live && mine === latest) setError(errText(e))
-      }
-    }
-    const stop = followCoding(() => void load())
-    return () => {
-      live = false
-      stop()
-    }
-  }, [id])
+    return follow(() => http<Detail>(path), (d) => { setDetail(d); setError(null) }, setError, false)
+  }, [id, changed])
 
   const bar = (
     <div className="nx-job__bar">
@@ -269,7 +261,7 @@ function ThreadDetail({ id, listed, several }: { id: string; listed?: { t: Threa
         </div>
       )}
       {!detail ? (
-        error ? <p className="nx-field__error" role="alert">{error}</p> : <div className="nx-center" aria-busy="true"><Spinner /></div>
+        !error && <div className="nx-center" aria-busy="true"><Spinner /></div>
       ) : detail.error ? (
         <p className="nx-field__error" role="alert">{nt('coding.t3Failed', { error: detail.error })}</p>
       ) : (
@@ -278,11 +270,12 @@ function ThreadDetail({ id, listed, several }: { id: string; listed?: { t: Threa
             <>
               <h4 className="nx-group-label">{nt('coding.question')}</h4>
               {detail.questions.map((q) => (
-                <div key={`${q.header} ${q.text}`} className="nx-job__prompt nx-coding-question">
+                <div key={q.id} className="nx-job__prompt nx-coding-question">
                   <span className="nx-row__hint">{q.header}</span>
                   <p>{q.text}</p>
+                  {/* Options keep T3's order and are never reordered, so the index is their identity. */}
                   {q.options.length > 0 && (
-                    <ul>{q.options.map((o) => <li key={o.label}><b>{o.label}</b>{o.description && ` · ${o.description}`}</li>)}</ul>
+                    <ul>{q.options.map((o, i) => <li key={i}><b>{o.label}</b>{o.description && ` · ${o.description}`}</li>)}</ul>
                   )}
                 </div>
               ))}
@@ -304,8 +297,8 @@ function ThreadDetail({ id, listed, several }: { id: string; listed?: { t: Threa
             )}
         </>
       )}
-      {/* A later read failed: what the last one showed stays. */}
-      {detail && error && <p className="nx-field__error" role="alert">{error}</p>}
+      {/* The first read or a later one failed; a later failure keeps what the last read showed. */}
+      {error && <p className="nx-field__error" role="alert">{error}</p>}
     </div>
   )
 }

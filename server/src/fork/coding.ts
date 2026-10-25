@@ -113,11 +113,11 @@ interface T3Timeline {
   hasMore: boolean
 }
 /** One question of a pending request, as t3_pending_request_read answers it. */
-interface T3Question { header: string; question: string; options: Array<{ label: string; description: string }> }
+interface T3Question { id: string; header: string; question: string; options: Array<{ label: string; description: string }> }
 /** What a thread's detail shows beyond its copy, its text redacted (threadDetail). */
 export interface ThreadDetail {
   branch: string | null
-  questions: Array<{ header: string; text: string; options: Array<{ label: string; description: string }> }>
+  questions: Array<{ id: string; header: string; text: string; options: Array<{ label: string; description: string }> }>
   messages: Array<{ id: number; kind: 'request' | 'reply' | 'plan'; text: string; at: string }>
   /** Where the T3 Code app opens the thread. */
   link: string
@@ -140,13 +140,12 @@ function t3File(): T3File {
   return JSON.parse(readFileSync(T3_FILE, 'utf8')) as T3File
 }
 
-/** The address the T3 Code app opens a thread at, in the scheme of the app
- *  build the instance's people use: a build other than T3's own answers only
- *  to its own scheme. */
-function t3Link(environmentId: string, threadId: string): string {
+/** The scheme of the T3 Code app build the instance's people open threads in:
+ *  a build other than T3's own answers only to its own scheme. */
+function t3Scheme(): string {
   const { scheme = 't3code' } = t3File()
   if (!T3_SCHEME.test(scheme)) throw new Error(`the T3 app scheme ${scheme} is not one the T3 app answers to`)
-  return `${scheme}://threads/${encodeURIComponent(environmentId)}/${encodeURIComponent(threadId)}`
+  return scheme
 }
 
 /** A message as the detail shows it: redacted first, since a cut can split a
@@ -253,6 +252,8 @@ export async function markedThreads(server: T3Server): Promise<ReadThread[]> {
 /** What a thread's detail shows beyond the copy, read from T3 when it opens.
  *  Exported for tests, which fake T3 at fetch. */
 export async function threadDetail(server: T3Server, threadId: string): Promise<ThreadDetail> {
+  // Checked first: a mistyped scheme fails before T3 is read for nothing.
+  const scheme = t3Scheme()
   const t3 = await connect(server)
   try {
     const { environmentId } = await t3.call<{ environmentId: string }>('t3_environment_read', {})
@@ -280,12 +281,13 @@ export async function threadDetail(server: T3Server, threadId: string): Promise<
       // The agent may have named the branch, so it is agent text too.
       branch: thread.branch === null ? null : redact(thread.branch),
       questions: questions.map((q) => ({
+        id: q.id,
         header: redact(q.header),
         text: redact(q.question),
         options: q.options.map((o) => ({ label: redact(o.label), description: redact(o.description) })),
       })),
       messages: messages.map(({ m, kind }) => ({ id: m.position, kind, text: clip(m.text ?? '', m.textTruncated), at: m.updatedAt })),
-      link: t3Link(environmentId, threadId),
+      link: `${scheme}://threads/${encodeURIComponent(environmentId)}/${encodeURIComponent(threadId)}`,
     }
   } finally {
     await t3.close().catch((err: unknown) => console.warn(`[fork] could not close the T3 session on ${server.name}:`, err))
@@ -475,52 +477,55 @@ export function startCodingPoller(): void {
 
 type Requirer = (req: Request & AuthedRequest) => Promise<{ userId: string; companyId: string }>
 
-/** GET /api/fork/agents/:agentId/coding, for workspace owners and admins: a
- *  thread's title is agent text, which can quote any room. */
+/** Whether the viewer may read what agents code, answering 403 when not:
+ *  workspace owners and admins only, since a thread's title and messages are
+ *  agent text, which can quote any room. Both coding routes go through here. */
+async function mayReadCoding(companyId: string, userId: string, res: Response): Promise<boolean> {
+  const { pool } = await import('../db/pool.js')
+  const { rows } = await pool.query<{ role: string | null }>(
+    'SELECT role FROM company_members WHERE company_id = $1 AND user_id = $2',
+    [companyId, userId],
+  )
+  if (isPrivileged(rows[0]?.role)) return true
+  res.status(403).json({ error: 'only workspace owners and admins can read what agents code' })
+  return false
+}
+
+/** A copied thread as both coding routes send it. */
+const shownThread = (t: CodingThread) => ({
+  server: t.server, threadId: t.threadId, title: redact(t.title), status: t.status,
+  pullRequests: t.pullRequests, createdAt: t.createdAt, updatedAt: t.updatedAt,
+})
+
+/** GET /api/fork/agents/:agentId/coding: an agent's newest threads. */
 export async function agentCoding(requireCompany: Requirer, req: Request & AuthedRequest, res: Response): Promise<void> {
   const { userId, companyId } = await requireCompany(req)
+  if (!(await mayReadCoding(companyId, userId, res))) return
   const agentId = String(req.params.agentId)
   const { pool } = await import('../db/pool.js')
-  const gate = await pool.query<{ role: string | null; agent: boolean }>(
-    `SELECT (SELECT role FROM company_members WHERE company_id = $1 AND user_id = $2) AS role,
-            EXISTS (SELECT 1 FROM participants WHERE id = $3 AND company_id = $1 AND kind = 'agent') AS agent`,
-    [companyId, userId, agentId],
+  const { rows } = await pool.query<{ agent: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM participants WHERE id = $1 AND company_id = $2 AND kind = 'agent') AS agent`,
+    [agentId, companyId],
   )
-  const role = gate.rows[0]?.role
-  if (!isPrivileged(role)) {
-    res.status(403).json({ error: 'only workspace owners and admins can read what agents code' })
-    return
-  }
-  if (!gate.rows[0].agent) {
+  if (!rows[0].agent) {
     res.status(404).json({ error: 'not found' })
     return
   }
   const threads = (await getForkStore()).codingThreads(companyId, agentId, LIST)
   res.json({
-    threads: threads.map((t) => ({
-      server: t.server, threadId: t.threadId, title: redact(t.title), status: t.status,
-      pullRequests: t.pullRequests, createdAt: t.createdAt, updatedAt: t.updatedAt,
-    })),
+    threads: threads.map(shownThread),
     servers: t3File().servers.map((s) => ({ name: s.name, error: pollErrors.get(s.name) ?? null })),
   })
 }
 
-/** GET /api/fork/coding/:server/:threadId, for workspace owners and admins like
- *  the list: one thread as copied, with what T3 holds of it now (threadDetail).
- *  The server's token reads every thread on its T3 server, so only a thread
- *  copied for an agent of the viewer's workspace is read. When T3 cannot be
- *  read, the copy comes with the reason. */
+/** GET /api/fork/coding/:server/:threadId: one thread as copied, with what T3
+ *  holds of it now (threadDetail). The server's token reads every thread on
+ *  its T3 server, so only a thread copied for an agent of the viewer's
+ *  workspace is read. When T3 cannot be read, the copy comes with the reason.
+ *  Exported for tests. */
 export async function codingThread(requireCompany: Requirer, req: Request & AuthedRequest, res: Response): Promise<void> {
   const { userId, companyId } = await requireCompany(req)
-  const { pool } = await import('../db/pool.js')
-  const gate = await pool.query<{ role: string | null }>(
-    'SELECT role FROM company_members WHERE company_id = $1 AND user_id = $2',
-    [companyId, userId],
-  )
-  if (!isPrivileged(gate.rows[0]?.role)) {
-    res.status(403).json({ error: 'only workspace owners and admins can read what agents code' })
-    return
-  }
+  if (!(await mayReadCoding(companyId, userId, res))) return
   const t = (await getForkStore()).codingThread(companyId, String(req.params.server), String(req.params.threadId))
   if (!t) {
     res.status(404).json({ error: 'not found' })
@@ -533,13 +538,11 @@ export async function codingThread(requireCompany: Requirer, req: Request & Auth
     if (!server) throw new Error(`the T3 server ${t.server} is no longer in this instance's list`)
     detail = await threadDetail(server, t.threadId)
   } catch (err) {
-    error = err instanceof Error ? err.message : String(err)
+    // T3's own error text can quote the thread.
+    error = redact(err instanceof Error ? err.message : String(err))
   }
   res.json({
-    thread: {
-      server: t.server, threadId: t.threadId, agentId: t.agentId, title: redact(t.title), status: t.status,
-      pullRequests: t.pullRequests, createdAt: t.createdAt, updatedAt: t.updatedAt,
-    },
+    thread: { ...shownThread(t), agentId: t.agentId },
     branch: detail?.branch ?? null,
     questions: detail?.questions ?? [],
     messages: detail?.messages ?? [],

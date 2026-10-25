@@ -22,7 +22,7 @@ writeFileSync(join(root, 'server/computer/t3code/tok'), 'token-123\n')
 writeFileSync(join(root, 'server/computer/t3code/bad'), 'token-line-one\ntoken-line-two\n')
 const cwd = process.cwd()
 process.chdir(root)
-const { markedThreads, parseMark, threadDetail } = await import('../fork/coding.js')
+const { codingThread, markedThreads, parseMark, threadDetail } = await import('../fork/coding.js')
 process.chdir(cwd)
 after(() => rmSync(root, { recursive: true, force: true }))
 
@@ -158,7 +158,7 @@ test('a detail reads the newest messages from the end of the timeline and the qu
     [400, 'reply', `${'b'.repeat(800)}…`],
     [449, 'reply', 'Cut by T3…'],
   ], 'the newest four, cut after redaction, and marked where T3 cut them')
-  assert.deepEqual(detail.questions, [{ header: 'Deploy', text: 'Push with GITHUB_TOKEN=[redacted] now?', options: [{ label: 'Yes', description: 'Push to main' }] }])
+  assert.deepEqual(detail.questions, [{ id: 'a', header: 'Deploy', text: 'Push with GITHUB_TOKEN=[redacted] now?', options: [{ label: 'Yes', description: 'Push to main' }] }])
 })
 
 test('a detail asks for no question without a pending request, and refuses a scheme the T3 app does not answer to', async (t) => {
@@ -174,6 +174,54 @@ test('a detail asks for no question without a pending request, and refuses a sch
   assert.ok(calls.includes('t3_thread_read {"threadId":"th-1","afterPosition":-1,"limit":100,"maxCharsPerItem":8000}'), 'a short timeline is read from its start')
 
   writeFileSync(join(root, 'server/computer/t3code.json'), JSON.stringify({ scheme: 'javascript', servers: [] }))
+  const before = calls.length
   await assert.rejects(threadDetail(server('tok'), 'th-1'), /not one the T3 app answers to/)
-  assert.equal(calls.at(-1), 'DELETE s-1')
+  assert.equal(calls.length, before, 'no T3 session is opened for a link that could not work')
+})
+
+test('the detail route answers owners and admins only, and reads T3 only for a thread copied for the workspace', async (t) => {
+  // db/pool.js loads env.ts, which exits without OPENAI_API_KEY; pg connects
+  // only on a query, and every query is faked here.
+  process.env.OPENAI_API_KEY ??= 'test-key'
+  const [{ pool }, { getForkStore }] = await Promise.all([import('../db/pool.js'), import('../fork/store.js')])
+  let role = 'member'
+  t.mock.method(pool, 'query', async () => ({ rows: [{ role }] }))
+  // The store opens in the temporary root: coding.ts loaded it from there.
+  ;(await getForkStore()).saveCodingThreads([{
+    server: 't3code', threadId: 'th-1', companyId: 'c1', agentId: 'bot', conversationId: null, title: 'Fix the header',
+    status: 'completed', runId: 'run-1', requestId: null, pullRequests: [], createdAt: '2026-10-20T01:00:00.000Z',
+    updatedAt: '2026-10-20T01:05:00.000Z', woken: null,
+  }])
+  writeFileSync(join(root, 'server/computer/t3code.json'), JSON.stringify({ servers: [server('tok')] }))
+  const calls = fakeT3(t, (name) => {
+    if (name === 't3_environment_read') return { environmentId: 'env-1' }
+    if (name === 't3_thread_read') return timeline({}, [item(0, 'user_message', 'Fix the header')], 0, false)
+    throw new Error(`unexpected ${name}`)
+  })
+  const call = async (companyId: string, threadId: string) => {
+    const res = {
+      code: 200,
+      body: null as { link: string | null; error: string | null; thread: { agentId: string } } | null,
+      status(code: number) { this.code = code; return this },
+      json(body: never) { this.body = body; return this },
+    }
+    await codingThread(async () => ({ userId: 'u1', companyId }), { params: { server: 't3code', threadId } } as never, res as never)
+    return res
+  }
+
+  assert.equal((await call('c1', 'th-1')).code, 403, 'a member is refused')
+  role = 'owner'
+  assert.equal((await call('c2', 'th-1')).code, 404, 'another workspace’s thread is not found')
+  assert.equal((await call('c1', 'th-other')).code, 404, 'a thread the server never copied is not found')
+  assert.deepEqual(calls, [], 'and none of them reached T3')
+  const ok = await call('c1', 'th-1')
+  assert.equal(ok.code, 200)
+  assert.equal(ok.body?.link, 't3code://threads/env-1/th-1')
+  assert.equal(ok.body?.thread.agentId, 'bot')
+
+  writeFileSync(join(root, 'server/computer/t3code.json'), JSON.stringify({ servers: [] }))
+  const gone = await call('c1', 'th-1')
+  assert.equal(gone.code, 200, 'a T3 server taken off the list still leaves the copy')
+  assert.match(gone.body?.error ?? '', /no longer in this instance/)
+  assert.equal(gone.body?.link, null)
 })
