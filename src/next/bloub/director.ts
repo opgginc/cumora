@@ -13,6 +13,7 @@ import { ws } from '@/api/client'
 import { useComputers } from '@/stores/computers'
 import { useParticipants } from '@/stores/participants'
 import type { Message } from '@/types'
+import { TALK_KINDS } from '../chat/model'
 import { AccessoryRig, earFace, outlineOf } from './accessories'
 import type { BotEngine } from './engine/engine'
 import { EXPRESSION_BY_ID, type ExpressionId } from './engine/expressions'
@@ -27,8 +28,6 @@ import { createView } from './view'
  *  state in and out. So the first change applies at once, and each mode is
  *  then held at least this long, the latest wanted mode winning. */
 const MIN_HOLD = 1.2
-/** The messages that count as the agent speaking (as in chat/ChatView.tsx). */
-const SPOKEN = new Set<Message['kind']>(['text', 'attachment', 'email', 'poll'])
 /** Seconds a tool prop takes to rise in, and to sink away. */
 const PROP_IN = 0.35
 const PROP_OUT = 0.25
@@ -213,7 +212,7 @@ function wink(bot: Bot) {
 
 function posted(message: Message) {
   const bot = bots.get(message.authorId)
-  if (bot && SPOKEN.has(message.kind)) wink(bot)
+  if (bot && TALK_KINDS.has(message.kind)) wink(bot)
 }
 
 /** The kind of tool comes as a hint beside the status, and often before it:

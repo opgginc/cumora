@@ -35,7 +35,7 @@ import { IconButton, INERT, Menu, Spinner, useCoarse, useMenu, type MenuEntry } 
 import { IArrowDown, IArrowUp, ICheck, ICopy, IDownload, IFile, IMore, IReply, ISpark, IThread, IWhisper } from '../ui/icons'
 import { buildItems, createdAt, floatingDay, type DayPill, type Item, type Pos, type Stamp } from './model'
 import { authorOf } from './deletedAuthor'
-import { answerKind } from './cardAnswers'
+import { answerKind, roomTalk } from './cardAnswers'
 import { useCardAnswers, useCards, useQuestionOf, useWaitingCard } from './cards'
 import { AskCard } from './AskCard'
 import { openFigures, useRoomTokens, useTokens } from './tokens'
@@ -821,9 +821,10 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
 
   // While the question the room's agents wait on is out of view, a pill says
   // so and goes to it. Only a loaded question gets one: a jump needs its row.
-  // A person's reply quoting a question answers it too (waitingQuestion).
-  const quoted = useMemo(() => new Set(raw.flatMap((m) => (m.quotedMessageId && byId[m.authorId]?.kind === 'human' ? [m.quotedMessageId] : []))), [raw, byId])
-  const waiting = useWaitingCard(convoId, quoted)
+  // A person's reply quoting a question answers it too, and so does anything
+  // a person writes after it once its agent has spoken since (waitingQuestion).
+  const talk = useMemo(() => roomTalk(raw, (id) => byId[id]?.kind === 'human'), [raw, byId])
+  const waiting = useWaitingCard(convoId, talk)
   const waitingId = waiting && items.some((it) => it.type === 'msg' && it.msg.id === waiting.messageId) ? waiting.messageId : null
   const waitingAgent = useParticipants((s) => (waiting ? authorOf(s.byId, waiting.agentId, nt)?.name : undefined))
   const range = useRef<ListRange | null>(null)

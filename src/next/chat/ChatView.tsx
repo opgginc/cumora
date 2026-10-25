@@ -6,7 +6,7 @@ import { getMeId, useMe } from '@/stores/auth'
 import { isMuted, useConversations } from '@/stores/conversations'
 import { useMessages } from '@/stores/messages'
 import { useParticipants } from '@/stores/participants'
-import type { Conversation, Message, Participant } from '@/types'
+import type { Conversation, Participant } from '@/types'
 import { agentButtonRef } from '../agentRefs'
 import { haptic } from '../haptics'
 import { useNT } from '../i18n'
@@ -19,6 +19,7 @@ import { isImeComposing } from '@/lib/keyboard'
 import { EditDialog, openEdit } from '../panel/EditDialog'
 import { MessageList, type Find } from './MessageList'
 import { Composer } from './Composer'
+import { TALK_KINDS } from './model'
 
 /** Agents of a room, live ones first. "Live" = typing in this room, or the
  *  server says working/thinking (status is global, typing is per room). */
@@ -150,9 +151,6 @@ function SearchBar({ q, setQ, index, setIndex, count, onClose }: {
   )
 }
 
-// Rows a person reads as a message. Agent work steps (tool, thought) and
-// system lines arrive in bursts while an agent works and are not news.
-const NEWS = new Set<Message['kind']>(['text', 'attachment', 'email', 'poll'])
 // Agents often answer in several rows at once; one double click covers them.
 const RECEIVED_GAP = 2000
 
@@ -165,7 +163,7 @@ function useReceivedHaptic(convoId: string, muted: boolean): void {
     let last = -Infinity
     return ws.on((e) => {
       if (e.type !== 'message.new' || e.conversationId !== convoId) return
-      if (e.message.authorId === getMeId() || !NEWS.has(e.message.kind)) return
+      if (e.message.authorId === getMeId() || !TALK_KINDS.has(e.message.kind)) return
       if (document.visibilityState !== 'visible' || performance.now() - last < RECEIVED_GAP) return
       last = performance.now()
       haptic('received')

@@ -4,6 +4,11 @@ import type { Message } from '@/types'
 /** Messages a bubble can show. Tool/thought rows are work, not conversation. */
 const WORK_KINDS = new Set<Message['kind']>(['tool', 'thought'])
 const LINE_KINDS = new Set<Message['kind']>(['system', 'whisper-link'])
+/** Messages that take a turn in the conversation, which a person reads as a
+ *  message. Work steps arrive in bursts while an agent works, and system
+ *  lines are not someone talking (a membership line names the person who
+ *  acted as its author). */
+export const TALK_KINDS = new Set<Message['kind']>(['text', 'attachment', 'email', 'poll'])
 /** Consecutive messages closer than this join one bubble group. */
 const GROUP_GAP_MS = 5 * 60_000
 /** Inside a turn, a message shows its time once the clock reads this many minutes past the last

@@ -12,7 +12,7 @@
 import { create } from 'zustand'
 import { ApiError, http, ws } from '@/api/client'
 import { useAuth } from '@/stores/auth'
-import { NO_ANSWERS, questionOf, roomAnswers, waitingQuestion, type Answers } from './cardAnswers'
+import { NO_ANSWERS, questionOf, roomAnswers, waitingQuestion, type Answers, type RoomTalk } from './cardAnswers'
 
 export interface CardAnswer {
   by: string
@@ -140,6 +140,6 @@ export function useQuestionOf(conversationId: string, quotedId: string | undefin
 }
 
 /** The question the room's agents wait on (waitingQuestion). */
-export function useWaitingCard(conversationId: string, quoted: ReadonlySet<string>): Card | undefined {
-  return useCards((s) => waitingQuestion(Object.values(s.byMessage), conversationId, quoted))
+export function useWaitingCard(conversationId: string, talk: RoomTalk): Card | undefined {
+  return useCards((s) => waitingQuestion(Object.values(s.byMessage), conversationId, talk))
 }
