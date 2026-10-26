@@ -51,10 +51,22 @@ function randomLook(taken: ReadonlySet<string>): BloubPick {
   return { shape: oneOf(SHAPES).id, color: oneOf(free.length > 0 ? free : PALETTE).id, accessories: [] }
 }
 
+/** The other active agents: the lineup beside the draft, and the wearers of the taken colours. */
+const otherAgents = (byId: Record<string, Participant>, agentId: string | undefined): Participant[] =>
+  Object.values(byId).filter((p) => p.kind === 'agent' && !p.departedAt && p.id !== agentId)
+
+/** The colours the bloubs of `others` wear. */
+const takenColors = (others: readonly Participant[], looks: Record<string, BloubLook>): Set<string> =>
+  new Set(others.flatMap((p) => (looks[p.id] ? [looks[p.id].color] : [])))
+
 /** The classic editor with the Look Studio in place of its avatar fields. Key
- *  it by the agent, so a draft never carries over to another one. */
+ *  it by the agent, so a draft never carries over to another one. A new agent
+ *  starts Animated, with the first look a choice of Animated would pick. */
 export function LookEditor({ agent, onClose, onSaved }: { agent: Participant | null; onClose: () => void; onSaved?: () => void }) {
-  const [draft, setDraft] = useState<Draft>({})
+  const [draft, setDraft] = useState<Draft>(() => (agent ? {} : {
+    animated: true,
+    pick: randomLook(takenColors(otherAgents(useParticipants.getState().byId, undefined), useBloubLooks.getState().byId)),
+  }))
   const avatar: AvatarSlot = {
     render: (portrait) => <LookStudio agent={agent} portrait={portrait} draft={draft} setDraft={setDraft} />,
     // Both writes are idempotent, so an unchanged pick is simply written again.
@@ -115,11 +127,10 @@ function LookStudio({ agent, portrait, draft, setDraft }: {
   )
 
   // The other agents, those wearing a bloub first, since only those can look alike.
-  const others = useMemo(() => Object.values(byId)
-    .filter((p) => p.kind === 'agent' && !p.departedAt && p.id !== agent?.id)
+  const others = useMemo(() => otherAgents(byId, agent?.id)
     .sort((a, b) => Number(Boolean(looks[b.id])) - Number(Boolean(looks[a.id])) || a.name.localeCompare(b.name)),
   [byId, looks, agent?.id])
-  const taken = useMemo(() => new Set(others.flatMap((p) => (looks[p.id] ? [looks[p.id].color] : []))), [others, looks])
+  const taken = useMemo(() => takenColors(others, looks), [others, looks])
   const twin = animated && pick ? others.find((p) => looks[p.id]?.color === pick.color) : undefined
   // Accessories tell two bloubs of one shape and colour apart; one this build
   // does not draw does not.

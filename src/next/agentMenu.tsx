@@ -1,8 +1,8 @@
 /**
  * The agent menu: one live menu for every place that names an agent. An
- * element marked `data-agent-id` opens it (agentRefs.ts says how); Agents wall
- * tiles and list rows open the agent on a click, so they open this menu
- * through `useHold` and `openAgentMenu`.
+ * element marked `data-agent-id` opens it (agentRefs.ts says how); Agents list
+ * rows open the agent on a click, so they open this menu through `useHold` and
+ * `openAgentMenu`.
  *
  * It shows what the agent is doing now, what it owns (its screen and its T3
  * Code threads, for owners and admins), how to talk to it and what to do with
@@ -29,7 +29,8 @@ import { getRoute, href, navigate, useRoute, withRoute } from './router'
 import { Avatar } from './ui/Avatar'
 import { anchorFrom, Menu, type MenuAnchor, type MenuEntry, type MenuItem } from './ui/primitives'
 import { IAgents, IAt, ICode, ICompose, IComputer, ICopy, IStop } from './ui/icons'
-import { isOpenThread, lastPr, look, newestThreads, threadTime, useCoding, type Thread } from './panel/CodingTab'
+import { isOpenThread, look, newestThreads, threadTime, useCoding, type Thread } from './panel/CodingTab'
+import { threadKey } from './panel/codingText'
 import { agentState, isLive, StateText, useHost, useSeesWork } from './sections/agents/shared'
 import { bindAgentRefs, hasAgentMenu } from './agentRefs'
 
@@ -70,26 +71,22 @@ export function bindAgentMenu(root: HTMLElement): () => void {
 }
 
 /** Opens one of the agent's panes: the room panel's drawer inside a chat,
- *  the agent's page in Agents anywhere else. */
-export function openAgentPane(id: string, pane: AgentPane): void {
+ *  the agent's page in Agents anywhere else. `t3` opens one of its threads
+ *  in the thread list (panel/codingText.ts threadKey). */
+export function openAgentPane(id: string, pane: AgentPane, t3: string | null = null): void {
   const r = getRoute()
   if (r.section === 'chats' && r.id) {
+    // Another pane of an open drawer takes its place. A thread opens as a new
+    // entry, so Back returns to where it was opened: the drawer, or the chat.
     const same = r.peek?.kind === 'agent' && r.peek.id === id
-    navigate(withRoute(r, { peek: { kind: 'agent', id }, threadId: null, params: { pane } }), { replace: same })
+    navigate(withRoute(r, { peek: { kind: 'agent', id }, threadId: null, params: { pane, t3 } }), { replace: same && !t3 })
     return
   }
   // The workspace shows the screen and the threads together.
   const view = pane === 'profile' ? 'profile' : null
   navigate(r.section === 'agents'
-    ? withRoute(r, { id, params: { view, since: null, at: null } })
-    : href({ section: 'agents', id, params: { view } }))
-}
-
-/** A thread with a pull request opens it, as its row does in the Coding list. */
-function openThread(t: Thread, agentId: string): void {
-  const pr = lastPr(t)
-  if (pr) window.open(pr.url, '_blank', 'noopener,noreferrer')
-  else openAgentPane(agentId, 'jobs')
+    ? withRoute(r, { id, params: { view, since: null, at: null, t3 } })
+    : href({ section: 'agents', id, params: { view, t3 } }))
 }
 
 /** The native apps run from a local origin; the server's is the one a link can open. */
@@ -172,7 +169,7 @@ export function AgentMenuHost() {
         label: t.title,
         icon: <span className="nx-agent-menu__thread" data-tone={tone}>{icon}</span>,
         detail: relative(threadTime(t), locale),
-        onSelect: () => openThread(t, p.id),
+        onSelect: () => openAgentPane(p.id, 'jobs', threadKey(t)),
       }
     }),
   ] : []

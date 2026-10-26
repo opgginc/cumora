@@ -1,9 +1,7 @@
 /**
- * Agents section: the wall of every agent (the default), or the roster beside
- * one agent's page on wide windows (`?roster=list`). An agent opened from the
- * wall fills the section with a back bar; on narrow windows its page is pushed
- * over the wall or the list (swipe back). Everything open is in the URL:
- * `/next/agents/:id`, `?roster=`, `?filter=`, `?view=`, and the dialogs
+ * Agents section: the roster beside one agent's page on wide windows; on
+ * narrow windows the page is pushed over the roster (swipe back). Everything
+ * open is in the URL: `/next/agents/:id`, `?filter=`, `?view=`, and the dialogs
  * `?new=1`, `?edit=1`, `?offboard=1`, `?purge=1`, so Back closes whatever was
  * opened last.
  */
@@ -18,9 +16,8 @@ import { useNT } from '../../i18n'
 import { getRoute, goBack, linkClick, navigate, withRoute, type Route } from '../../router'
 import { Dialog, IconButton, SPRING_SHEET, Spinner, T_FAST } from '../../ui/primitives'
 import { IAgents, IChevronLeft, IPlus } from '../../ui/icons'
-import { DIALOG_PARAMS, dialogHref, errorText, isWall, listHref, NO_DIALOG, refreshRoster, useRoster } from './shared'
+import { DIALOG_PARAMS, dialogHref, errorText, listHref, NO_DIALOG, refreshRoster, useRoster } from './shared'
 import { AgentList } from './List'
-import { AgentWall } from './Wall'
 import { AgentProfile } from './Profile'
 import { LookEditor } from './LookStudio'
 
@@ -164,7 +161,7 @@ function useHardwareBack(route: Route, covered: boolean): void {
   }, [route, covered])
 }
 
-/** The open agent's page; `bar` adds the back bar when it covers the wall or list. */
+/** The open agent's page; `bar` adds the back bar when it covers the roster. */
 function Detail({ route, bar, children }: { route: Route; bar: boolean; children: ReactNode }) {
   const nt = useNT()
   const name = useParticipants((s) => (route.id ? s.byId[route.id]?.name : undefined))
@@ -196,7 +193,7 @@ function PickAgent({ route }: { route: Route }) {
   )
 }
 
-/** Narrow windows: the agent's page slides over the wall or list, follows a
+/** Narrow windows: the agent's page slides over the roster, follows a
  *  swipe from anywhere, and what is under it peeks back with parallax (as in
  *  chat/ChatsSection). */
 function StackAgents({ route, list, profile }: { route: Route; list: ReactNode; profile: ReactNode }) {
@@ -232,12 +229,9 @@ export default function AgentsSection({ route, layout, stack }: SectionProps) {
       setRefreshing(false)
     }
   }, [])
-  const wall = isWall(route)
-  useHardwareBack(route, stack || wall)
+  useHardwareBack(route, stack)
 
-  const list = wall
-    ? <AgentWall route={route} roster={roster} refreshing={refreshing} covered={stack && route.id !== null} />
-    : <AgentList route={route} roster={roster} refreshing={refreshing} />
+  const list = <AgentList route={route} roster={roster} refreshing={refreshing} />
   const profile = route.id
     ? <AgentProfile key={route.id} id={route.id} route={route} roster={roster} onRefresh={refresh} />
     : null
@@ -251,8 +245,6 @@ export default function AgentsSection({ route, layout, stack }: SectionProps) {
     <>
       {stack ? (
         <StackAgents route={route} list={list} profile={profile} />
-      ) : wall ? (
-        opened ? <Detail route={route} bar>{opened}</Detail> : list
       ) : (
         <div className="nx-agents" data-layout={layout}>
           {list}

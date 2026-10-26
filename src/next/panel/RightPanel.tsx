@@ -79,7 +79,9 @@ function Identity({ c }: { c: Conversation }) {
   )
 }
 
-const TABS: PanelTab[] = ['handbook', 'coding', 'computer', 'members', 'files', 'routines']
+// Coding first: what the room's agents are building is what an owner opens
+// the panel for most. The first tab is also the one the panel opens on.
+const TABS: PanelTab[] = ['coding', 'handbook', 'computer', 'members', 'files', 'routines']
 // A 1:1 room's two members are the room itself.
 const DIRECT_TABS = TABS.filter((t) => t !== 'members')
 
@@ -127,7 +129,7 @@ export function RightPanel({ route, layout }: { route: Route; layout: Layout }) 
 
   const tabs = c.kind === 'direct' ? DIRECT_TABS : TABS
   // A tab this room lacks (Members kept in the URL from a group room) falls back too.
-  const tab: PanelTab = route.panel && route.panel !== 'none' && tabs.includes(route.panel) ? route.panel : 'handbook'
+  const tab: PanelTab = route.panel && route.panel !== 'none' && tabs.includes(route.panel) ? route.panel : tabs[0]
   const setTab = (t: PanelTab) => navigate(withRoute(getRoute(), { panel: t }), { replace: true })
 
   return (

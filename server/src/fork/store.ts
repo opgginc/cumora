@@ -769,6 +769,15 @@ export async function openForkStore(file: string) {
       ).map(toCodingThread)
     },
 
+    /** One thread of the workspace's copy, or null. */
+    codingThread(companyId: string, server: string, threadId: string): CodingThread | null {
+      const [row] = rows(
+        `SELECT ${CODING_COLUMNS} FROM coding_threads WHERE company_id = ? AND server = ? AND thread_id = ?`,
+        [companyId, server, threadId],
+      )
+      return row ? toCodingThread(row) : null
+    },
+
     /** '<server> <thread id>' of every thread copied so far. */
     codingThreadKeys(): Set<string> {
       return new Set(rows("SELECT server || ' ' || thread_id FROM coding_threads", null).map(([key]) => String(key)))

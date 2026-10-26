@@ -28,7 +28,7 @@ import { haptic } from '../haptics'
 import { useNT, type NT } from '../i18n'
 import { href, navigate, getRoute, withRoute } from '../router'
 import { bytes, clock, dayLabel, exactTime, fullDate, pauseLength, relative, startOfDay } from '../format'
-import { HOLD_MS, useHold } from '../hooks'
+import { HOLD_MS, useCopy, useHold } from '../hooks'
 import { agentRef } from '../agentRefs'
 import { Avatar } from '../ui/Avatar'
 import { IconButton, INERT, Menu, Spinner, useCoarse, useMenu, type MenuEntry } from '../ui/primitives'
@@ -51,14 +51,7 @@ const QUICK = ['👍', '❤️', '😂', '👀', '✅', '🔥']
  * a check once the text is copied.
  */
 function CopyText({ text }: { text: string }) {
-  const nt = useNT()
-  const [done, setDone] = useState<'copied' | 'failed' | null>(null)
-  useEffect(() => {
-    if (!done) return
-    const t = window.setTimeout(() => setDone(null), 1500)
-    return () => window.clearTimeout(t)
-  }, [done])
-  const label = done === 'copied' ? nt('msg.copied') : done === 'failed' ? nt('msg.copyFailed') : nt('msg.copy')
+  const { done, label, copy } = useCopy()
   return (
     <button
       type="button"
@@ -66,7 +59,7 @@ function CopyText({ text }: { text: string }) {
       data-done={done ?? undefined}
       aria-label={label}
       title={label}
-      onClick={() => copyText(text).then(() => setDone('copied'), () => { haptic('error'); setDone('failed') })}
+      onClick={() => copy(text)}
     >
       {done === 'copied' ? <ICheck aria-hidden /> : <ICopy aria-hidden />}
     </button>

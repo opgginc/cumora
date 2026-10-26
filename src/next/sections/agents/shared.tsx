@@ -1,4 +1,4 @@
-/** Helpers and small pieces shared by the agents wall, list, profile and
+/** Helpers and small pieces shared by the agents list, profile and
  *  dialogs, and by the agent menu and drawer outside this section. */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -35,7 +35,7 @@ export const useHost = (p: Participant | undefined): Computer | undefined =>
 
 /** The viewer sees the agent's browser and T3 Code threads: they own or
  *  administer the workspace (the routes answer no one else), and the agent
- *  has them (`hasWork`). The menu, drawer, wall and page all ask this. */
+ *  has them (`hasWork`). The menu, drawer and page all ask this. */
 export function useSeesWork(p: Participant | undefined): boolean {
   const admin = useAdmin()
   const host = useHost(p)
@@ -73,12 +73,9 @@ export function parseFilter(raw: string | null): Filter {
   return FILTERS.includes(raw as Filter) ? raw as Filter : 'all'
 }
 
-/** The wall (the default) or the list beside the open agent: `?roster=list`. */
-export const isWall = (route: Route): boolean => route.search.get('roster') !== 'list'
-
-/** The wall or list URL, keeping the filter the user picked. */
+/** The roster's URL, keeping the filter the user picked. */
 export function listHref(route: Route): string {
-  return href({ section: 'agents', params: { filter: route.search.get('filter'), roster: route.search.get('roster') } })
+  return href({ section: 'agents', params: { filter: route.search.get('filter') } })
 }
 
 /** Hiring, editing, off-boarding and deleting change the roster and the DM list. */
@@ -88,7 +85,7 @@ export async function refreshRoster(): Promise<void> {
 
 export interface Team { agents: Participant[]; busy: Set<string>; former: Participant[]; humans: Participant[] }
 
-/** The agents a filter shows: the wall's tiles, and the list's rows for every filter but All. */
+/** The agents a filter shows: the list's rows for every filter but All. */
 export function agentsFor(team: Team, filter: Filter): Participant[] {
   if (filter === 'working') return team.agents.filter((p) => team.busy.has(p.id))
   if (filter === 'idle') return team.agents.filter((p) => !team.busy.has(p.id))
@@ -142,22 +139,6 @@ export function FilterTabs({ route, team }: { route: Route; team: Team }) {
       value={filter}
       items={tabs}
       onChange={(k) => navigate(withRoute(route, { params: { filter: k === 'all' ? null : k } }), { replace: true })}
-    />
-  )
-}
-
-/** Wall or List. Going to the wall leaves the open agent for the whole wall. */
-export function RosterSwitch({ route }: { route: Route }) {
-  const nt = useNT()
-  const wall = isWall(route)
-  return (
-    <Segmented
-      label={nt('agents.layout')}
-      value={wall ? 'wall' : 'list'}
-      items={[{ key: 'wall', label: nt('agents.wall') }, { key: 'list', label: nt('agents.list') }]}
-      onChange={(k) => navigate(k === 'wall'
-        ? href({ section: 'agents', params: { filter: route.search.get('filter') } })
-        : withRoute(route, { params: { roster: 'list' } }), { replace: true })}
     />
   )
 }

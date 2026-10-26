@@ -1,5 +1,5 @@
 /**
- * The roster as a list beside the open profile (`?roster=list`): active
+ * The roster as a list beside the open profile: active
  * agents (with live status, engine and computer), human teammates, and
  * off-boarded agents behind the Former filter. The filter is a query param,
  * so a filtered list survives reloads and Back. A click opens the agent; a
@@ -17,7 +17,7 @@ import { Avatar } from '../../ui/Avatar'
 import { IconButton, Spinner, T_FAST } from '../../ui/primitives'
 import { IPlus } from '../../ui/icons'
 import {
-  agentsFor, agentState, dialogHref, EMPTY_FILTER, engineOf, FilterTabs, LoadError, parseFilter, RosterSwitch, StateText, useHost, useTeam, type Roster,
+  agentsFor, agentState, dialogHref, EMPTY_FILTER, engineOf, FilterTabs, LoadError, parseFilter, StateText, useHost, useTeam, type Roster,
 } from './shared'
 
 const AgentRow = memo(function AgentRow({ p, to, active }: { p: Participant; to: string; active: boolean }) {
@@ -107,7 +107,6 @@ export function AgentList({ route, roster, refreshing }: { route: Route; roster:
       <header className="nx-agents-head">
         <h1>{nt('agents.title')}</h1>
         {refreshing && <Spinner label={nt('agents.refreshing')} />}
-        <RosterSwitch route={route} />
         <IconButton
           label={nt('agents.hire')}
           tipPlace="below"

@@ -459,8 +459,40 @@ button.nx-hb-note { transition: background-color var(--duration-quick); }
 .nx-coding[data-tone="warn"] > :first-child { color: var(--warn); }
 .nx-coding[data-tone="bad"] > :first-child { color: var(--destructive); }
 .nx-coding[data-tone="muted"] > :first-child { color: var(--muted-foreground); }
-.nx-coding__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-coding__title,
+.nx-coding .nx-row__hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-coding-list { animation: nx-rise var(--duration-fast) var(--ease-smooth-out) both; }
+/* A row opens its thread: the link stretches over the whole row, and the last
+   pull request's chip sits above it and opens that pull request. Its link
+   rules are the Routines rows' (below). */
+.nx-coding { position: relative; }
+.nx-coding__open { color: inherit; text-decoration: none; }
+.nx-coding__pr { position: relative; z-index: 1; text-decoration: none; }
+.nx-coding__pr:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media (hover: hover) {
+  .nx-coding__open:hover,
+  .nx-coding__pr:hover { color: var(--primary); }
+}
+/* A chip is 20px tall; under a finger it takes the row's height. */
+@media (pointer: coarse) {
+  .nx-coding__pr::before { content: ""; position: absolute; inset: -12px -4px; }
+}
+/* A thread opened in place shares the job's frame (RoutinesTab.tsx). */
+.nx-coding-thread__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.nx-coding-thread__branch { overflow-wrap: anywhere; }
+/* Several agents share the list: the detail names its agent, which opens the agent menu. */
+.nx-coding-thread__agent { display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-sm); color: var(--foreground); }
+.nx-coding-thread__agent:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.nx-coding-question { display: flex; flex-direction: column; gap: 4px; }
+.nx-coding-question p,
+.nx-coding-question ul { margin: 0; }
+.nx-coding-question ul { padding-left: 16px; }
+.nx-coding-question b { font-weight: 500; }
+.nx-coding-message { display: flex; flex-direction: column; gap: 4px; padding: 12px; }
+.nx-coding-message + .nx-coding-message { border-top: 1px solid var(--border); }
+/* The label, and the copy button at its end. */
+.nx-coding-message__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nx-coding-message__text { min-width: 0; font-size: var(--text-body); overflow-wrap: anywhere; }
 
 /* ── Files ─────────────────────────────────────────────────────────── */
 .nx-files { display: flex; flex-direction: column; gap: 8px; }
@@ -480,9 +512,12 @@ button.nx-hb-note { transition: background-color var(--duration-quick); }
    switch sits above that, so a tap anywhere but the switch opens the row. */
 .nx-routine { position: relative; flex-wrap: wrap; padding: 6px 12px; }
 .nx-routine__open { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; color: inherit; text-decoration: none; }
-.nx-routine__open::after { content: ""; position: absolute; inset: 0; }
-.nx-routine__open:focus-visible { outline: none; }
-.nx-routine:has(.nx-routine__open:focus-visible) { outline: 2px solid var(--ring); outline-offset: -2px; }
+.nx-routine__open::after,
+.nx-coding__open::after { content: ""; position: absolute; inset: 0; }
+.nx-routine__open:focus-visible,
+.nx-coding__open:focus-visible { outline: none; }
+.nx-routine:has(.nx-routine__open:focus-visible),
+.nx-coding:has(.nx-coding__open:focus-visible) { outline: 2px solid var(--ring); outline-offset: -2px; }
 .nx-routine__open > svg,
 .nx-routine > svg { flex: none; width: 16px; height: 16px; color: var(--muted-foreground); }
 .nx-routine .nx-switch,
@@ -524,10 +559,6 @@ button.nx-hb-note { transition: background-color var(--duration-quick); }
 .nx-thread__composer { padding: 8px 12px calc(12px + var(--safe-bottom)); }
 
 /* ── Computer tab (panel/ComputerTab.tsx): the agent's browser, live ── */
-/* The Agents wall's small, slow copy of a browser (ScreenThumb in panel/ComputerTab.tsx). */
-.nx-thumb { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 10; overflow: hidden; border-radius: var(--radius-sm); background: var(--muted); color: var(--muted-foreground); font-size: var(--text-caption); }
-.nx-thumb > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top; animation: nx-fade var(--duration-fast) var(--ease-smooth-out) both; }
-
 .nx-screen { display: flex; flex-direction: column; gap: 8px; }
 .nx-screen__bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .nx-screen__url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-caption); color: var(--muted-foreground); }

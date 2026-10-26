@@ -13,14 +13,14 @@ import { PreviewText } from '@/components/PreviewText'
 import { GroupCreator } from '@/components/GroupCreator'
 import type { Conversation, Participant } from '@/types'
 import { useNT } from '../i18n'
-import { href, linkClick } from '../router'
+import { href, linkClick, navigate } from '../router'
 import { listStamp } from '../format'
 import { haptic } from '../haptics'
 import { openPalette, useHold } from '../hooks'
 import { Avatar, AvatarStack } from '../ui/Avatar'
 import { Dialog, IconButton, INERT, Menu, MOD, Spinner, T_FAST, useCoarse, useMenu, type MenuAnchor, type MenuEntry } from '../ui/primitives'
 import {
-  IArrowDown, IArrowLeft, IArrowRight, IArrowUp, IBellOff, IChecks, IChevronDown, ICompose, IEye, IEyeOff, IFolder, IHash, IMail,
+  IAgents, IArrowDown, IArrowLeft, IArrowRight, IArrowUp, IBellOff, IChecks, IChevronDown, ICompose, IEye, IEyeOff, IFolder, IHash, IMail,
   IPencil, IPin, IPlus, ISearch, ITrash, IUsers, IExit,
 } from '../ui/icons'
 import { OTHER_GROUP, useRoomLayout, type Category } from './roomLayout'
@@ -884,6 +884,8 @@ export function Sidebar({ activeId }: { activeId: string | null }) {
           { key: 'dm', label: nt('chats.newDirect'), icon: <ICompose />, onSelect: () => openPalette('people') },
           { key: 'group', label: nt('chats.newGroup'), icon: <IUsers />, onSelect: () => setCreating(true) },
           { key: 'mail', label: nt('chats.newEmail'), icon: <IMail />, onSelect: () => useApp.getState().openComposeNew() },
+          // The Agents section's hire dialog; closing it comes back here.
+          { key: 'agent', label: nt('chats.newAgent'), icon: <IAgents />, onSelect: () => navigate(href({ section: 'agents', params: { new: '1' } })) },
           'sep',
           { key: 'category', label: nt('chats.newCategory'), icon: <IFolder />, onSelect: () => useListMenu.setState({ target: null, dialog: 'category' }) },
         ]}
