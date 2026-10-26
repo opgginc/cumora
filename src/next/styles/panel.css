@@ -462,6 +462,11 @@ button.nx-hb-note { transition: background-color var(--duration-quick); }
 .nx-coding__title,
 .nx-coding .nx-row__hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-coding-list { animation: nx-rise var(--duration-fast) var(--ease-smooth-out) both; }
+/* Virtuoso wraps each row, so the rule between rows goes on the wrappers; set
+   by index, a row keeps its height whichever rows are mounted beside it. */
+.nx-coding-rows > :not([data-index="0"]) { border-top: 1px solid var(--border); }
+/* A thread settled in T3 is dealt with, so its row recedes; hover still lights the title. */
+.nx-coding[data-settled] { color: var(--muted-foreground); }
 /* A row opens its thread: the link stretches over the whole row, and the last
    pull request's chip sits above it and opens that pull request. Its link
    rules are the Routines rows' (below). */

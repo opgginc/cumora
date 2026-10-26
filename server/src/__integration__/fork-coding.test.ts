@@ -57,7 +57,7 @@ test('T3 is read every few seconds while an agent is busy or a copied thread sti
   const at = new Date().toISOString()
   ;(await getForkStore()).saveCodingThreads([{
     server, threadId: 'th-1', companyId, agentId, conversationId: null, title: 'Fix it', status: 'running', runId: 'r-1',
-    requestId: null, pullRequests: [], createdAt: at, updatedAt: at, woken: null,
+    requestId: null, pullRequests: [], createdAt: at, updatedAt: at, settledAt: null, woken: null,
   }])
   assert.equal(await hot(server), true, 'a running thread will come to rest')
   assert.equal(await hot(`t3-${randomUUID()}`), false, 'only on its own server')
