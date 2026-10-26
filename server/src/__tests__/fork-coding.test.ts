@@ -129,7 +129,7 @@ test('a detail reads the newest messages from the end of the timeline and the qu
       ], 300, true)
     }
     if (name === 't3_thread_read' && args.afterPosition === 300) {
-      return timeline(thread, [item(400, 'assistant_message', 'b'.repeat(4_100)), item(449, 'assistant_message', 'Cut by T3', true)], 449, false)
+      return timeline(thread, [item(400, 'assistant_message', 'b'.repeat(4_100)), item(449, 'assistant_message', 'Cut by T3\nmid-wo', true)], 449, false)
     }
     if (name === 't3_pending_request_list') return { requestIds: ['q-1'] }
     if (name === 't3_pending_request_read') {
@@ -155,7 +155,7 @@ test('a detail reads the newest messages from the end of the timeline and the qu
     [270, 'reply', 'Pushed with [redacted]'],
     [300, 'plan', '1. Fix it'],
     [400, 'reply', `${'b'.repeat(3_999)}…`],
-    [449, 'reply', 'Cut by…'],
+    [449, 'reply', 'Cut by T3…'],
   ], 'the newest four, cut after redaction, and marked where T3 cut them, without the token T3 cut through')
   assert.deepEqual(detail.questions, [{ id: 'a', header: 'Deploy', text: 'Push with GITHUB_TOKEN=[redacted] now?', options: [{ label: 'Yes', description: 'Push to main' }] }])
 })
@@ -170,8 +170,9 @@ test('a message T3 cut loses its unfinished key or token before redaction, so no
         // The first key shrinks to [redacted], which pulls the second, cut by T3
         // before its END, into the characters the detail shows.
         item(0, 'assistant_message', `Two keys:\n${pem('A'.repeat(3_000), true)}\n${pem('B'.repeat(4_000), false)}`, true),
-        // A token cut too short for its pattern.
-        item(1, 'assistant_message', `Pushed with ghp_${'c'.repeat(10)}`, true),
+        // A quoted value of several words, cut before its closing quote: no
+        // pattern sees a secret there, whichever word the cut went through.
+        item(1, 'assistant_message', 'Config:\n"password": "correct horse battery sta', true),
         // Cut right after a whole key's END marker, and inside one.
         item(2, 'assistant_message', `Key:\n${pem('D'.repeat(3_000), true)}`, true),
         item(3, 'assistant_message', `Key:\n${pem('E'.repeat(3_000), true).replace(/-----$/, '')}`, true),
@@ -180,11 +181,11 @@ test('a message T3 cut loses its unfinished key or token before redaction, so no
     throw new Error(`unexpected ${name}`)
   })
 
-  const [keys, token, endCut, insideEnd] = (await threadDetail(server('tok'), 'th-1', 't3code')).messages
+  const [keys, quoted, endCut, insideEnd] = (await threadDetail(server('tok'), 'th-1', 't3code')).messages
   assert.ok(keys.text.includes('[redacted]'), 'the whole key is redacted')
   assert.ok(!keys.text.includes('BBBB'), 'the cut key shows nothing of its body')
   assert.ok(keys.text.endsWith('…'))
-  assert.equal(token.text, 'Pushed with…', 'the cut token goes')
+  assert.equal(quoted.text, 'Config:…', 'the line the cut went through goes, every quoted word with it')
   assert.ok(!endCut.text.includes('DDDD'), `a key cut at the end of its END marker stays redacted: ${endCut.text.slice(0, 80)}`)
   assert.ok(!insideEnd.text.includes('EEEE'), `a key cut inside its END marker shows nothing: ${insideEnd.text.slice(0, 80)}`)
 })

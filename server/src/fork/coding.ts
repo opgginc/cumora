@@ -147,14 +147,15 @@ function t3File(): T3File {
 }
 
 // The unfinished end of a text T3 cut: a private key whose whole END marker
-// was cut away, else the token the cut went through. Neither matches a pattern
-// in redact(). The text is at most T3_TEXT long and BEGIN markers are rare, so
-// the scan from each one to the end stays small.
-const UNFINISHED = new RegExp(`${KEY_BEGIN}(?![\\s\\S]*${KEY_END})[\\s\\S]*$|(?<!\\S)\\S+$`)
+// was cut away, else the line the cut went through, since a quoted value
+// there can span words and its closing quote is gone. Neither matches a
+// pattern in redact(). The text is at most T3_TEXT long and BEGIN markers are
+// rare, so the scan from each one to the end stays small.
+const UNFINISHED = new RegExp(`${KEY_BEGIN}(?![\\s\\S]*${KEY_END})[\\s\\S]*$|[^\\n]*$`)
 
 /** A message as the detail shows it: preview() redacts before it cuts and
  *  keeps the lines. A text T3 already cut loses its unfinished end first,
- *  after its whole keys are redacted, so dropping the last token never breaks
+ *  after its whole keys are redacted, so dropping the last line never breaks
  *  the END marker of a key that was whole; "…" marks the cut. */
 function clip(text: string, cut: boolean): string {
   const shown = preview(cut ? redactKeys(text).replace(UNFINISHED, '') : text, TEXT, { keepLines: true }) ?? ''
