@@ -9,11 +9,12 @@ import { useCallback } from 'react'
 import { useLocaleStore, type Locale } from '@/lib/i18n'
 import { en } from './locales/en'
 import { zhCN } from './locales/zh-CN'
+import { ko } from './locales/ko'
 
 export type NKey = keyof typeof en
 export type NT = (key: NKey, vars?: Record<string, string | number>) => string
 
-const DICTS: Record<Locale, Partial<Record<NKey, string>>> = { en, 'zh-CN': zhCN }
+const DICTS: Record<Locale, Partial<Record<NKey, string>>> = { en, 'zh-CN': zhCN, ko }
 
 function interpolate(template: string, vars?: Record<string, string | number>): string {
   if (!vars) return template

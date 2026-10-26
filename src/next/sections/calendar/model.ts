@@ -284,8 +284,9 @@ export function describeRepeat(r: RecurrenceRule | null, nt: NT, locale: Locale)
   if (!r) return nt('calendar.repeat.none')
   let base = r.interval > 1 ? nt(`calendar.repeat.every.${r.freq}`, { n: r.interval }) : nt(`calendar.repeat.each.${r.freq}`)
   if (r.freq === 'weekly' && r.byweekday?.length) {
-    const days = new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' })
-      .format(r.byweekday.map((d) => weekdayName(d, locale)))
+    // A plain separator from the catalogue: Intl.ListFormat puts a conjunction into
+    // Korean ("월, 수 및 금") where a calendar writes "월, 수, 금".
+    const days = r.byweekday.map((d) => weekdayName(d, locale)).join(nt('calendar.repeat.daySep'))
     base = nt('calendar.repeat.on', { base, days })
   }
   const parts = [base]

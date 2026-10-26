@@ -8,6 +8,7 @@ import { useMessages } from '@/stores/messages'
 import { useParticipants } from '@/stores/participants'
 import { isWindowAttentive } from '@/lib/windowAttention'
 import { isWatchingConversation } from '@/lib/watching'
+import { t } from '@/lib/i18n'
 
 interface ConversationsState {
   list: Conversation[]
@@ -88,7 +89,7 @@ function previewOf(last: ApiConversation['lastMessage']): string {
   const meId = useAuth.getState().user?.id
   const byId = useParticipants.getState().byId
   const resolveName = (id: string): string | null => {
-    if (id === meId) return 'You'
+    if (id === meId) return t('common.you')
     return byId[id]?.name ?? null
   }
   const authorName = resolveName(last.authorId)
