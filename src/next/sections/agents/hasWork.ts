@@ -10,7 +10,7 @@ import type { Computer, Participant } from '@/types'
 export const hasWork = (p: Participant, host: Computer | undefined): boolean =>
   p.kind === 'agent' && host !== undefined && noWorkReason(p, host, true) === null
 
-/** Why a wall tile shows no screen, the rules above plus the viewer's role:
+/** Why the viewer gets no screen of an agent, the rules above plus the viewer's role:
  *  off-boarded, a Cumora Cloud agent, or a viewer the routes refuse. Null
  *  when the screen will show, or while the host is not known yet. */
 export function noWorkReason(p: Participant, host: Computer | undefined, admin: boolean): 'departed' | 'cloud' | 'locked' | null {

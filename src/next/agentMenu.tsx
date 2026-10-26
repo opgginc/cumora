@@ -1,8 +1,8 @@
 /**
  * The agent menu: one live menu for every place that names an agent. An
- * element marked `data-agent-id` opens it (agentRefs.ts says how); Agents wall
- * tiles and list rows open the agent on a click, so they open this menu
- * through `useHold` and `openAgentMenu`.
+ * element marked `data-agent-id` opens it (agentRefs.ts says how); Agents list
+ * rows open the agent on a click, so they open this menu through `useHold` and
+ * `openAgentMenu`.
  *
  * It shows what the agent is doing now, what it owns (its screen and its T3
  * Code threads, for owners and admins), how to talk to it and what to do with

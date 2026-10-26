@@ -6,7 +6,7 @@
  * vertical drag scrolls. Text from a phone keyboard, an IME or the clipboard
  * goes through the field under the screen. Owners and admins only, because the
  * browser shows every site the agent is signed in to. The agent drawer and the
- * Agents workspace show the same `Screen`; the Agents wall shows `ScreenThumb`.
+ * Agents workspace show the same `Screen`.
  */
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from 'react'
 import { http } from '@/api/client'
@@ -46,28 +46,18 @@ const shown = (signal: AbortSignal) => new Promise<void>((resolve) => {
  * Reads an agent's screen until `signal` aborts, one answer or failure at a
  * time: it rests while the app is in the background and retries a failed read
  * after 3 s. A first read answers with the newest frame the server holds.
- * `wait: false` asks the server not to hold later reads open (the first still
- * waits, to learn whether a browser is open); `gap` pauses between reads;
- * `until` waits for the caller's own condition. Screen and ScreenThumb share
- * it, so the protocol lives in one place.
  */
-async function* screenReads(agentId: string, signal: AbortSignal, { wait = true, gap = 0, until }: {
-  wait?: boolean
-  gap?: number
-  until?: () => Promise<void>
-} = {}): AsyncGenerator<{ poll: Poll } | { error: unknown }> {
+async function* screenReads(agentId: string, signal: AbortSignal): AsyncGenerator<{ poll: Poll } | { error: unknown }> {
   const path = `/fork/agents/${encodeURIComponent(agentId)}/screen`
   let after = 0
   while (!signal.aborted) {
-    if (until) await until()
-    if (signal.aborted) return
     if (document.hidden) {
       await shown(signal)
       continue
     }
     let read: { poll: Poll } | { error: unknown }
     try {
-      read = { poll: await http<Poll>(`${path}?after=${after}${!wait && after > 0 ? '&wait=0' : ''}`, { signal }) }
+      read = { poll: await http<Poll>(`${path}?after=${after}`, { signal }) }
     } catch (error) {
       read = { error }
     }
@@ -75,7 +65,8 @@ async function* screenReads(agentId: string, signal: AbortSignal, { wait = true,
     if (signal.aborted) return
     if ('poll' in read) after = read.poll.seq
     yield read
-    await sleep('poll' in read ? gap : 3_000, signal)
+    // The server holds a read open until a frame comes; only a failure waits here.
+    if ('error' in read) await sleep(3_000, signal)
   }
 }
 
@@ -328,69 +319,6 @@ export function Screen({ agent, big = false }: { agent: Participant; big?: boole
         </Dialog>
       )}
     </div>
-  )
-}
-
-// A wall tile shows one frame this often: enough to see what an agent is on,
-// light enough for a dozen tiles at once.
-const THUMB_MS = 3_000
-
-/**
- * A small, slow copy of an agent's screen for the Agents wall. It reads only
- * while the tile is on screen and the app is visible, one frame every
- * THUMB_MS, into an <img> so the browser decodes it off the main thread. After
- * the first read it asks with `wait=0`: a tile wants the newest frame or
- * nothing, and must not hold one of the phone's few connections for the
- * server's long poll. Each read keeps the server's stream for that agent open
- * (screen.ts closes it 30 s after the last read). `paused` stops the reads and
- * keeps the last frame: a pushed page covers the wall on a phone, which an
- * IntersectionObserver cannot see.
- */
-export function ScreenThumb({ agent, paused = false }: { agent: Participant; paused?: boolean }) {
-  const nt = useNT()
-  const box = useRef<HTMLSpanElement>(null)
-  const [src, setSrc] = useState<string | null>(null)
-  const [state, setState] = useState<'loading' | Poll['state']>('loading')
-
-  useEffect(() => {
-    const node = box.current
-    if (!node || paused) return
-    const ac = new AbortController()
-    const { signal } = ac
-    let onScreen = false
-    let wake = () => {}
-    const io = new IntersectionObserver(([e]) => {
-      onScreen = e.isIntersecting
-      if (onScreen) wake()
-    })
-    io.observe(node)
-    // Cleanup wakes a read that waits for the tile to scroll into view.
-    signal.addEventListener('abort', () => wake(), { once: true })
-    const until = () => (onScreen ? Promise.resolve() : new Promise<void>((resolve) => { wake = resolve }))
-    void (async () => {
-      for await (const read of screenReads(agent.id, signal, { wait: false, gap: THUMB_MS, until })) {
-        // A failed read leaves the last frame up; the next one tries again.
-        if ('error' in read) continue
-        const r = read.poll
-        if (r.frame) setSrc(`data:image/jpeg;base64,${r.frame}`)
-        else if (r.state === 'closed') setSrc(null)
-        setState(r.state)
-      }
-    })()
-    return () => {
-      ac.abort()
-      io.disconnect()
-    }
-  }, [agent.id, paused])
-
-  // The stream says open before its first frame comes, so only closed means
-  // there is no browser; open without a frame still waits for one.
-  return (
-    <span ref={box} className="nx-thumb" data-state={src ? 'open' : state}>
-      {src
-        ? <img src={src} alt={nt('computer.title', { name: agent.name })} draggable={false} />
-        : state === 'closed' ? <span>{nt('computer.noBrowser')}</span> : <Spinner />}
-    </span>
   )
 }
 

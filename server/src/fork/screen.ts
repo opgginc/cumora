@@ -63,7 +63,7 @@ function dashboardSessions(): Promise<Array<{ session: string; port: number }>> 
   })
 }
 
-export class Screen {
+class Screen {
   state: ScreenPoll['state'] = 'closed'
   seq = 0
   private frame: { data: string; width: number; seq: number } | null = null
@@ -145,11 +145,9 @@ export class Screen {
     }
   }
 
-  poll(after: number, signal: AbortSignal, hold = true): Promise<ScreenPoll> {
+  poll(after: number, signal: AbortSignal): Promise<ScreenPoll> {
     this.polled = Date.now()
-    // Without `hold` a read still waits until a new stream has learned whether
-    // a browser is open; answering before that would say closed for nothing.
-    if ((!hold && this.known) || this.seq > after || signal.aborted) return Promise.resolve(this.snapshot(after))
+    if (this.seq > after || signal.aborted) return Promise.resolve(this.snapshot(after))
     return new Promise((resolve) => {
       const done = () => {
         clearTimeout(timer)
@@ -286,15 +284,14 @@ async function gate(requireCompany: Requirer, req: Request & AuthedRequest, res:
 
 /** GET /api/fork/agents/:agentId/screen?after=<seq>: the browser's state, and
  *  its newest frame when one arrived after `after`. Waits up to HOLD_MS for a
- *  change when there is none, unless `wait=0`: the Agents wall's thumbnails
- *  want the newest frame or nothing and must not hold a connection. */
+ *  change when there is none. */
 export async function agentScreen(requireCompany: Requirer, req: Request & AuthedRequest, res: Response): Promise<void> {
   const agentId = await gate(requireCompany, req, res)
   if (!agentId) return
   const after = Math.max(0, Number(req.query.after) || 0)
   const abort = new AbortController()
   res.on('close', () => abort.abort())
-  const poll = await screenOf(agentId).poll(after, abort.signal, req.query.wait !== '0')
+  const poll = await screenOf(agentId).poll(after, abort.signal)
   if (abort.signal.aborted) return
   res.setHeader('Cache-Control', 'no-store')
   res.json(poll)

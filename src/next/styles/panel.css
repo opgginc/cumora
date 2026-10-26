@@ -559,10 +559,6 @@ button.nx-hb-note { transition: background-color var(--duration-quick); }
 .nx-thread__composer { padding: 8px 12px calc(12px + var(--safe-bottom)); }
 
 /* ── Computer tab (panel/ComputerTab.tsx): the agent's browser, live ── */
-/* The Agents wall's small, slow copy of a browser (ScreenThumb in panel/ComputerTab.tsx). */
-.nx-thumb { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 10; overflow: hidden; border-radius: var(--radius-sm); background: var(--muted); color: var(--muted-foreground); font-size: var(--text-caption); }
-.nx-thumb > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top; animation: nx-fade var(--duration-fast) var(--ease-smooth-out) both; }
-
 .nx-screen { display: flex; flex-direction: column; gap: 8px; }
 .nx-screen__bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .nx-screen__url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-caption); color: var(--muted-foreground); }

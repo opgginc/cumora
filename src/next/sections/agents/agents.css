@@ -66,9 +66,8 @@
 }
 .nx-agents-row > :not(.nx-agents-row__sel) { position: relative; z-index: 1; }
 .nx-agents-row--skel { pointer-events: none; }
-/* Both open the agent menu on a long press; iOS would show its link preview too. */
-.nx-agents-row,
-.nx-agents-tile { -webkit-touch-callout: none; user-select: none; }
+/* A row opens the agent menu on a long press; iOS would show its link preview too. */
+.nx-agents-row { -webkit-touch-callout: none; user-select: none; }
 .nx-agents-row--skel .nx-agents-row__main { gap: 6px; }
 .nx-agents-row[data-departed] .nx-avatar,
 .nx-agents-gone { filter: grayscale(1); opacity: 0.7; }
@@ -218,42 +217,6 @@
 .nx-agents-value small[data-s="online"] { color: var(--live); }
 .nx-agents-tools { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 4px; }
 .nx-agents-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-caption); }
-
-/* ── Wall (Wall.tsx): one tile per agent, as many columns as fit ───── */
-.nx-agents-wall { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--background); }
-/* The list's filters stretch across its column; across a wall they keep their width. */
-.nx-agents-wall .nx-agents-filters .nx-seg { display: inline-flex; width: auto; }
-.nx-agents-wall .nx-agents-filters .nx-seg__tab { flex: none; }
-.nx-agents-wall__scroll { flex: 1; min-height: 0; padding: 0 12px 16px; }
-.nx-agents-wall__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-.nx-agents-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  padding: 8px;
-  border-radius: var(--radius);
-  background: var(--card);
-  box-shadow: 0 0 0 1px var(--border), var(--shadow-card);
-  color: var(--foreground);
-  text-decoration: none;
-  transition: background-color var(--duration-quick), box-shadow var(--duration-quick);
-}
-@media (hover: hover) {
-  .nx-agents-tile:hover { box-shadow: 0 0 0 1px var(--input), var(--shadow-card); }
-}
-.nx-agents-tile:active { background: var(--muted); }
-.nx-agents-tile--skel { height: 196px; border-radius: var(--radius); }
-.nx-agents-tile__who { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.nx-agents-tile__who > .nx-agents-state { flex: none; }
-.nx-agents-tile__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.nx-agents-tile[data-departed] .nx-agents-tile__name { color: var(--muted-foreground); }
-.nx-agents-tile__line { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; font-size: var(--text-caption); color: var(--muted-foreground); }
-.nx-agents-tile__line > svg { flex: none; width: 14px; height: 14px; }
-.nx-agents-tile__line[data-tone="live"] > :first-child { color: var(--live); }
-.nx-agents-tile__line[data-tone="warn"] > :first-child { color: var(--warn); }
-.nx-agents-tile__line[data-tone="bad"] > :first-child { color: var(--destructive); }
-.nx-agents-tile__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); }
 
 /* ── Workspace (Work.tsx): the screen beside threads and changes ───── */
 .nx-agents-detail__scroll { container-type: inline-size; }

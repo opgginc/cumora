@@ -318,7 +318,6 @@ const core = {
   'computer.tab': 'Tab',
   'computer.enter': 'Enter',
   'computer.backspace': 'Backspace',
-  'computer.noBrowser': 'No browser open',
 
   'agentMenu.now': 'Now: {title}',
   'agentMenu.screen': 'Live screen',

@@ -6,8 +6,8 @@
  * opens the thread's detail in place of the list (`?t3=<server>:<thread id>`),
  * which T3 is read for when it opens, and its pull request chip opens the last
  * pull request. Owners and admins only, because a title an agent wrote can quote
- * any room. The agent drawer, the Agents wall and workspace and the agent menu
- * read the same lists through `useCoding`; the drawer and the workspace show
+ * any room. The agent drawer, the agent's workspace and the agent menu read
+ * the same lists through `useCoding`; the drawer and the workspace show
  * the list and its detail through `CodingList`.
  */
 import { useEffect, useRef, useState } from 'react'
@@ -81,7 +81,7 @@ export function look(status: string): { label: NKey; tone: string; icon: JSX.Ele
   return { label: 'coding.idle', tone: 'muted', icon: <span className="nx-coding__dot" aria-hidden /> }
 }
 
-/** The pull request a list row and an Agents wall tile show for a thread: the last one T3 lists. */
+/** The pull request a list row shows for a thread: the last one T3 lists. */
 export const lastPr = (t: Thread): Thread['pullRequests'][number] | undefined => t.pullRequests[t.pullRequests.length - 1]
 
 /** A running thread counts from its start, a resting one from when it stopped. */

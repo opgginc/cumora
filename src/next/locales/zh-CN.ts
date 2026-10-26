@@ -327,7 +327,6 @@ export const zhCN: Partial<Record<keyof typeof en, string>> = {
   'computer.tab': 'Tab',
   'computer.enter': 'Enter',
   'computer.backspace': '退格',
-  'computer.noBrowser': '没有打开的浏览器',
 
   'agentMenu.now': '正在做：{title}',
   'agentMenu.screen': '实时画面',
