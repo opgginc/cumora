@@ -8,7 +8,7 @@ import { useMessages } from '@/stores/messages'
 import { useParticipants } from '@/stores/participants'
 import { isWindowAttentive } from '@/lib/windowAttention'
 import { isWatchingConversation } from '@/lib/watching'
-import { t, useLocaleStore } from '@/lib/i18n'
+import { t as translateNow, useLocaleStore } from '@/lib/i18n'
 
 interface ConversationsState {
   list: Conversation[]
@@ -89,10 +89,11 @@ function previewOf(last: ApiConversation['lastMessage']): string {
   const meId = useAuth.getState().user?.id
   const byId = useParticipants.getState().byId
   const resolveName = (id: string): string | null => {
-    if (id === meId) return t('common.you')
+    if (id === meId) return 'You'
     return byId[id]?.name ?? null
   }
-  const authorName = resolveName(last.authorId)
+  // Only the "You:" prefix is translated: system lines and mentions below are English templates.
+  const authorName = last.authorId === meId ? translateNow('common.you') : resolveName(last.authorId)
   // Rewrite raw `@<id>` mention tokens to `@<DisplayName>` so previews
   // don't leak participant ids like `@u-27c9522d-3b7`. Mirror the regex
   // used by parseBody() so we tokenize exactly what the chat renderer
