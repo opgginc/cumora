@@ -1,5 +1,6 @@
 /**
- * Coding: the T3 Code threads the room's agents launched. The server copies
+ * Coding: the T3 Code threads the room's agents launched, every one not settled
+ * in T3 and the recently settled ones, dimmed. The server copies
  * them from T3 (server/src/fork/coding.ts) and says on the workspace's socket
  * when its copy changed, so the tab reads the list again then, and the last
  * answer per agent draws the list at once when the tab opens again. A row
@@ -10,7 +11,8 @@
  * the same lists through `useCoding`; the drawer and the workspace show
  * the list and its detail through `CodingList`.
  */
-import { useEffect, useRef, useState } from 'react'
+import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Virtuoso, type ListProps } from 'react-virtuoso'
 import { http, ws } from '@/api/client'
 import { RichBody } from '@/components/Message'
 import { useLocale } from '@/lib/i18n'
@@ -37,6 +39,8 @@ export interface Thread {
   pullRequests: Array<{ number: number; url: string; state: string | null }>
   createdAt: string
   updatedAt: string
+  /** When someone settled it in T3, marking it dealt with; null while it is not. */
+  settledAt: string | null
 }
 interface Coding { threads: Thread[]; servers: Array<{ name: string; error: string | null }> }
 type AgentCoding = Coding & { agentId: string }
@@ -61,6 +65,10 @@ const STOPPED = new Set(['interrupted', 'cancelled', 'rolled_back'])
 /** Still going: running, or stopped on a question for someone. */
 export const isOpenThread = (t: Thread): boolean => ACTIVE.has(t.status) || t.status === 'question'
 
+/** At rest and settled in T3: nothing is left to do on it. A settled thread
+ *  that moves again shows as moving. */
+const isSettled = (t: Thread): boolean => t.settledAt !== null && !isOpenThread(t)
+
 // The last answer for each agent, so the list draws at once when the tab opens
 // again, and its entrance plays only the first time (src/next/AGENTS.md).
 const cache = new Map<string, Coding>()
@@ -72,9 +80,12 @@ const cached = (ids: string): AgentCoding[] | null => {
   return lists.every((l) => l !== null) ? (lists as AgentCoding[]) : null
 }
 
-export function look(status: string): { label: NKey; tone: string; icon: JSX.Element } {
+export function look(t: Thread): { label: NKey; tone: string; icon: JSX.Element } {
+  const { status } = t
   if (status === 'question') return { label: 'coding.waiting', tone: 'warn', icon: <IInfo aria-hidden /> }
   if (ACTIVE.has(status)) return { label: 'coding.running', tone: 'live', icon: <Spinner /> }
+  // How it ended matters less once someone has dealt with it.
+  if (isSettled(t)) return { label: 'coding.settled', tone: 'muted', icon: <ICheck aria-hidden /> }
   if (status === 'completed') return { label: 'coding.completed', tone: 'live', icon: <ICheck aria-hidden /> }
   if (status === 'failed') return { label: 'coding.failed', tone: 'bad', icon: <IX aria-hidden /> }
   if (STOPPED.has(status)) return { label: 'coding.stopped', tone: 'muted', icon: <IStop aria-hidden /> }
@@ -84,8 +95,9 @@ export function look(status: string): { label: NKey; tone: string; icon: JSX.Ele
 /** The pull request a list row shows for a thread: the last one T3 lists. */
 export const lastPr = (t: Thread): Thread['pullRequests'][number] | undefined => t.pullRequests[t.pullRequests.length - 1]
 
-/** A running thread counts from its start, a resting one from when it stopped. */
-export const threadTime = (t: Thread): string => (isOpenThread(t) ? t.createdAt : t.updatedAt)
+/** A running thread counts from its start, a resting one from when it was
+ *  settled, or else from when it stopped. */
+export const threadTime = (t: Thread): string => (isOpenThread(t) ? t.createdAt : t.settledAt ?? t.updatedAt)
 
 /** Newest first, every agent's threads in one list. */
 export const newestThreads = (coding: AgentCoding[]): Array<{ t: Thread; agentId: string }> => coding
@@ -170,14 +182,16 @@ export function useCoding(ids: string, enabled = true): { coding: AgentCoding[] 
   return { coding: own ? coding : null, fresh, error }
 }
 
-function CodingRow({ t, to, agent, server }: { t: Thread; to: string; agent?: Participant; server: boolean }) {
+// Memoized: Virtuoso renders the rows it shows again whenever it mounts more
+// during a scroll, with the same thread objects until the list is read again.
+const CodingRow = memo(function CodingRow({ t, to, agent, server }: { t: Thread; to: string; agent?: Participant; server: boolean }) {
   const nt = useNT()
   const locale = useLocale()
-  const { label, tone, icon } = look(t.status)
+  const { label, tone, icon } = look(t)
   const pr = lastPr(t)
   const when = relative(threadTime(t), locale)
   return (
-    <div className="nx-row nx-coding" data-tone={tone}>
+    <div className="nx-row nx-coding" data-tone={tone} data-settled={isSettled(t) || undefined}>
       {icon}
       {agent && <Avatar p={agent} size={20} />}
       {/* Stretched over the whole row; the pull request chip sits above it. */}
@@ -192,7 +206,14 @@ function CodingRow({ t, to, agent, server }: { t: Thread; to: string; agent?: Pa
       {t.pullRequests.length > 1 && <span className="nx-chip nx-mono">+{t.pullRequests.length - 1}</span>}
     </div>
   )
-}
+})
+
+/** The card is the list itself, so its surface spans every row, rendered or
+ *  not. Module-level, so Virtuoso never sees a new component type. */
+const CodingRows = forwardRef<HTMLDivElement, ListProps & { context: { fresh: boolean } }>(function CodingRows({ style, children, context }, ref) {
+  return <div ref={ref} style={style} className={context.fresh ? 'nx-rows nx-coding-rows nx-coding-list' : 'nx-rows nx-coding-rows'}>{children}</div>
+})
+const ROWS = { List: CodingRows }
 
 /** Copies a message's Markdown as the server sent it: redacted, and ending in
  *  "…" where it was cut. Always shown, since touch has no hover. */
@@ -254,7 +275,7 @@ function ThreadDetail({ open, listed, several }: {
       </div>
     )
   }
-  const { label, tone, icon } = look(t.status)
+  const { label, tone, icon } = look(t)
   const asked = !!detail && detail.questions.length > 0
   return (
     <div className="nx-job">
@@ -334,6 +355,46 @@ function ThreadDetail({ open, listed, several }: {
   )
 }
 
+/** The rows of the list, mounted only near the view: every unsettled thread
+ *  is listed, so the list can grow past a screen. It scrolls with the panel
+ *  or page around it, the nearest scroller. */
+function ThreadRows({ rows, fresh, agents, server }: {
+  rows: Array<{ t: Thread; agentId: string }>
+  fresh: boolean
+  agents: Participant[]
+  server: boolean
+}) {
+  const route = useRoute()
+  const [scroller, setScroller] = useState<HTMLElement | null>(null)
+  const root = useCallback((el: HTMLDivElement | null) => {
+    if (el) setScroller(el.closest<HTMLElement>('.nx-scroll'))
+  }, [])
+  const context = useMemo(() => ({ fresh }), [fresh])
+  const byId = new Map(agents.map((a) => [a.id, a]))
+  return (
+    <div ref={root}>
+      {scroller && (
+        <Virtuoso
+          customScrollParent={scroller}
+          data={rows}
+          context={context}
+          computeItemKey={(_, { t }) => threadKey(t)}
+          itemContent={(_, { t, agentId }) => (
+            <CodingRow
+              t={t}
+              to={withRoute(route, { params: { t3: threadKey(t) } })}
+              agent={agents.length > 1 ? byId.get(agentId) : undefined}
+              server={server}
+            />
+          )}
+          components={ROWS}
+          increaseViewportBy={{ top: 400, bottom: 800 }}
+        />
+      )}
+    </div>
+  )
+}
+
 /** The threads of `agents`, newest first, or the one `?t3=` names; a face on
  *  each row and in the detail once there are several agents. */
 export function CodingList({ agents }: { agents: Participant[] }) {
@@ -353,26 +414,13 @@ export function CodingList({ agents }: { agents: Participant[] }) {
       ? <div className="nx-empty" role="alert">{error}</div>
       : <div className="nx-center" aria-busy="true"><Spinner /></div>
   }
-  const byId = new Map(agents.map((a) => [a.id, a]))
   const rows = newestThreads(coding)
   const servers = coding[0]?.servers ?? []
   return (
     <>
       {rows.length === 0
         ? <div className="nx-empty">{nt(agents.length === 1 ? 'coding.noneAgent' : 'coding.none')}</div>
-        : (
-          <div className={fresh ? 'nx-rows nx-coding-list' : 'nx-rows'}>
-            {rows.map(({ t, agentId }) => (
-              <CodingRow
-                key={threadKey(t)}
-                t={t}
-                to={withRoute(route, { params: { t3: threadKey(t) } })}
-                agent={agents.length > 1 ? byId.get(agentId) : undefined}
-                server={servers.length > 1}
-              />
-            ))}
-          </div>
-        )}
+        : <ThreadRows rows={rows} fresh={fresh} agents={agents} server={servers.length > 1} />}
       {/* A failing T3 server may be holding threads back, even when none show. */}
       {servers.filter((s) => s.error).map((s) => <p key={s.name} className="nx-field__error" role="alert">{nt('coding.serverError', { server: s.name, error: s.error ?? '' })}</p>)}
       {error && <p className="nx-field__error" role="alert">{error}</p>}

@@ -28,7 +28,7 @@ after(() => rmSync(root, { recursive: true, force: true }))
 
 const server = (tokenFile: string) => ({ name: 't3code', url: 'http://t3.example.test/mcp', tokenFile })
 const thread = (threadId: string, status: string, more: object = {}) => ({
-  threadId, title: `[@bot] ${threadId}`, status, latestRunId: `run-${threadId}`, settled: false,
+  threadId, title: `[@bot] ${threadId}`, status, latestRunId: `run-${threadId}`, settled: false, settledAt: null,
   pullRequests: [], createdAt: '2026-10-20T01:00:00.000Z', updatedAt: '2026-10-20T01:05:00.000Z', ...more,
 })
 
@@ -218,7 +218,7 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
   ;(await getForkStore()).saveCodingThreads([{
     server: 't3code', threadId: 'th-1', companyId: 'c1', agentId: 'bot', conversationId: null, title: 'Fix the header',
     status: 'completed', runId: 'run-1', requestId: null, pullRequests: [], createdAt: '2026-10-20T01:00:00.000Z',
-    updatedAt: '2026-10-20T01:05:00.000Z', woken: null,
+    updatedAt: '2026-10-20T01:05:00.000Z', settledAt: null, woken: null,
   }])
   writeFileSync(join(root, 'server/computer/t3code.json'), JSON.stringify({ servers: [server('tok')] }))
   // T3's own error text can quote the thread, a secret included.
@@ -266,7 +266,7 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
   const list = async () => {
     const res = {
       code: 200,
-      body: null as { threads: Array<{ threadId: string }> } | null,
+      body: null as { threads: Array<{ threadId: string; settledAt: string | null }> } | null,
       status(code: number) { this.code = code; return this },
       json(body: never) { this.body = body; return this },
     }
@@ -274,6 +274,14 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
     return res
   }
   assert.deepEqual((await list()).body?.threads.map((x) => x.threadId), ['th-1'])
+  // Of the settled threads, the list keeps those settled within three days.
+  const settled = (threadId: string, hoursAgo: number) => ({
+    server: 't3code', threadId, companyId: 'c1', agentId: 'bot', conversationId: null, title: threadId, status: 'completed',
+    runId: `run-${threadId}`, requestId: null, pullRequests: [], createdAt: '2026-10-20T01:00:00.000Z',
+    updatedAt: new Date().toISOString(), settledAt: new Date(Date.now() - hoursAgo * 3_600_000).toISOString(), woken: null,
+  })
+  ;(await getForkStore()).saveCodingThreads([settled('th-settled', 71), settled('th-settled-long-ago', 73)])
+  assert.deepEqual((await list()).body?.threads.map((x) => [x.threadId, x.settledAt !== null]), [['th-settled', true], ['th-1', false]])
   agent = false
   assert.equal((await list()).code, 404, 'not an agent of the workspace')
   role = 'member'

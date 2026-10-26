@@ -294,6 +294,7 @@ const core = {
   'coding.failed': 'Failed',
   'coding.stopped': 'Stopped',
   'coding.idle': 'Idle',
+  'coding.settled': 'Settled',
   'coding.serverError': 'T3 server {server}: {error}',
   'coding.noneAgent': 'No T3 Code threads yet.',
   'coding.openInT3': 'Open in T3',

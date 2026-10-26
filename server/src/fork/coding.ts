@@ -15,7 +15,9 @@
  * its own, so one that sleeps holds back nothing. A change is announced to the
  * workspace, whose open Coding tabs then read their list again. A thread keeps
  * the agent of its first copy, so renaming it in T3 does not move it. A thread
- * renamed without its mark, archived or deleted in T3 stays as it was last read.
+ * renamed without its mark, archived or deleted in T3 leaves the copy at the
+ * next whole read of its server. The tab lists every thread of an agent not yet
+ * settled in T3 (marked as dealt with there), and only the recently settled ones.
  *
  * compose names the T3 servers in T3_FILE (the MCP server name Claude Code
  * knows each by, its URL and its token file) and mounts the server's own T3
@@ -69,9 +71,12 @@ const WAKE_STATUSES = ['completed', 'failed', 'interrupted', 'cancelled', 'rolle
 // A thread first copied this long after it came to rest is history: the store
 // was new or the server was down, and its agent is not woken for it.
 const STALE_MS = 30 * 60_000
-// ponytail: the Coding tab shows each agent's 10 most recently changed
-// threads; page the route if someone needs the older ones there.
-const LIST = 10
+// Of an agent's settled threads, the Coding tab shows those settled within
+// SETTLED_MS, at most SETTLED_LIST, beside every thread not settled.
+// ponytail: the unsettled ones are not paged; page the route if an agent keeps
+// hundreds of threads unsettled.
+const SETTLED_MS = 3 * 24 * 60 * 60_000
+const SETTLED_LIST = 20
 // A thread's detail shows its newest MESSAGES as Markdown, each cut to TEXT
 // characters, which leaves a usual reply whole for its copy button. T3 sends
 // T3_TEXT, twice TEXT, so redact() sees a secret whole before the cut. T3
@@ -106,6 +111,7 @@ interface T3Thread {
   pullRequests?: Array<{ number: number; url: string; state: string | null }>
   createdAt: string
   updatedAt: string
+  settledAt: string | null
 }
 /** A marked thread as read from T3, with its question if it waits for an answer. */
 type ReadThread = Omit<T3Thread, 'pullRequests'> & Pick<CodingThread, 'pullRequests' | 'requestId'>
@@ -427,12 +433,15 @@ const pollErrors = new Map<string, string>()
 async function poll(server: T3Server): Promise<void> {
   const failed = pollErrors.get(server.name)
   const seen: Array<{ thread: ReadThread; agentId: string; title: string }> = []
+  // Only a whole read says which threads T3 no longer lists.
+  let whole = false
   try {
     for (const thread of await markedThreads(server)) {
       const mark = parseMark(thread.title)
       if (mark) seen.push({ thread, ...mark })
     }
     pollErrors.delete(server.name)
+    whole = true
   } catch (err) {
     // Shown under every workspace's list, and T3's error text can quote a thread.
     const message = redact(err instanceof Error ? err.message : String(err))
@@ -451,12 +460,15 @@ async function poll(server: T3Server): Promise<void> {
       // Found by its first wake: the launching turn may not have recorded a call yet.
       conversationId: null,
       title, status: thread.requestId ? 'question' : thread.status, runId: thread.latestRunId, requestId: thread.requestId,
-      pullRequests: thread.pullRequests, createdAt: thread.createdAt, updatedAt: thread.updatedAt,
+      pullRequests: thread.pullRequests, createdAt: thread.createdAt, updatedAt: thread.updatedAt, settledAt: thread.settledAt,
     }
     const fresh = !known.has(`${server.name} ${thread.threadId}`)
     threads.push({ ...t, woken: fresh && Date.now() - Date.parse(t.updatedAt) > STALE_MS ? codingWakeKey(t) : null })
   }
   const changed = store.saveCodingThreads(threads)
+  // The tab lists every unsettled thread, so a copy T3 no longer lists would
+  // stay in it for good.
+  if (whole) for (const id of store.dropCodingThreads(server.name, seen.map((s) => s.thread.threadId))) changed.add(id)
   if (pollErrors.get(server.name) !== failed) for (const id of await agentWorkspaces()) changed.add(id)
   await announce(changed)
   for (const t of store.codingWakesDue(server.name, WAKE_STATUSES)) await wake(t)
@@ -511,10 +523,11 @@ async function mayReadCoding(companyId: string, userId: string, res: Response, a
 /** A copied thread as both coding routes send it. */
 const shownThread = (t: CodingThread) => ({
   server: t.server, threadId: t.threadId, title: redact(t.title), status: t.status,
-  pullRequests: t.pullRequests, createdAt: t.createdAt, updatedAt: t.updatedAt,
+  pullRequests: t.pullRequests, createdAt: t.createdAt, updatedAt: t.updatedAt, settledAt: t.settledAt,
 })
 
-/** GET /api/fork/agents/:agentId/coding: an agent's newest threads.
+/** GET /api/fork/agents/:agentId/coding: an agent's unsettled threads and its
+ *  recently settled ones.
  *  Exported for tests. */
 export async function agentCoding(requireCompany: Requirer, req: Request & AuthedRequest, res: Response): Promise<void> {
   const { userId, companyId } = await requireCompany(req)
@@ -525,7 +538,7 @@ export async function agentCoding(requireCompany: Requirer, req: Request & Authe
     res.status(404).json({ error: 'not found' })
     return
   }
-  const threads = (await getForkStore()).codingThreads(companyId, agentId, LIST)
+  const threads = (await getForkStore()).codingThreads(companyId, agentId, new Date(Date.now() - SETTLED_MS).toISOString(), SETTLED_LIST)
   res.json({
     threads: threads.map(shownThread),
     servers: t3File().servers.map((s) => ({ name: s.name, error: pollErrors.get(s.name) ?? null })),
