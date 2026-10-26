@@ -143,8 +143,9 @@
 .nx-msg[data-pos="first"] { padding-top: 8px; }
 .nx-msg[data-mine] { flex-direction: row-reverse; }
 /* Avatar column: a turn's avatar sits at its top beside the name row, and the
-   turn's later messages show their time in it, so it fits "12:59 PM". */
-.nx-msg__gutter { flex: none; align-self: flex-start; width: 56px; display: flex; }
+   turn's later messages show their time in it, so it fits "12:59 PM". The
+   avatar hugs the column's right edge so it stays next to the name and bubble. */
+.nx-msg__gutter { flex: none; align-self: flex-start; width: 56px; display: flex; justify-content: flex-end; }
 /* An agent's avatar and name open the agent menu (src/next/agentMenu.tsx). */
 .nx-msg__face { display: inline-flex; border-radius: 999px; }
 @media (hover: hover) {
