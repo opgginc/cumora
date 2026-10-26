@@ -350,8 +350,11 @@ const MIGRATIONS = [
   `ALTER TABLE cards ADD COLUMN answer_text TEXT;`,
 
   // When a Coding thread was settled in T3 (./coding.ts), NULL while it is
-  // not: the Coding tab lists every unsettled thread but only recent settled ones.
-  `ALTER TABLE coding_threads ADD COLUMN settled_at TEXT;`,
+  // not: the Coding tab lists every unsettled thread but only recent settled
+  // ones. `unlisted` is 1 while the last whole read of its T3 server did not
+  // list it; the row stays, so it keeps the wake its agent already had.
+  `ALTER TABLE coding_threads ADD COLUMN settled_at TEXT;
+   ALTER TABLE coding_threads ADD COLUMN unlisted INTEGER NOT NULL DEFAULT 0;`,
 ]
 
 export interface FileVersion {
@@ -767,18 +770,26 @@ export async function openForkStore(file: string) {
       save()
     },
 
-    /** An agent's threads, the most recently changed first: every one not
-     *  settled in T3, and the `settledLimit` most recently settled at or after
-     *  `settledSince`. T3's times and toISOString() share one format, so they
-     *  compare as text. */
-    codingThreads(companyId: string, agentId: string, settledSince: string, settledLimit: number): CodingThread[] {
+    /** An agent's threads on `servers` that T3 still lists, the most recently
+     *  changed first: every one not settled in T3 or in one of the `open`
+     *  statuses, and of the other settled ones the `settledLimit` most recently
+     *  settled at or after `settledSince`. The poller stores settled_at as
+     *  toISOString() does, so the two compare as text. */
+    codingThreads(companyId: string, agentId: string, list: {
+      servers: readonly string[]
+      open: readonly string[]
+      settledSince: string
+      settledLimit: number
+    }): CodingThread[] {
+      const these = `company_id = ? AND agent_id = ? AND unlisted = 0 AND server IN (${list.servers.map(() => '?').join(', ')})`
+      const open = `status IN (${list.open.map(() => '?').join(', ')})`
       return rows(
-        `SELECT ${CODING_COLUMNS} FROM coding_threads WHERE company_id = ? AND agent_id = ? AND settled_at IS NULL
+        `SELECT ${CODING_COLUMNS} FROM coding_threads WHERE ${these} AND (settled_at IS NULL OR ${open})
          UNION ALL
-         SELECT * FROM (SELECT ${CODING_COLUMNS} FROM coding_threads WHERE company_id = ? AND agent_id = ? AND settled_at >= ?
+         SELECT * FROM (SELECT ${CODING_COLUMNS} FROM coding_threads WHERE ${these} AND settled_at >= ? AND NOT ${open}
                         ORDER BY settled_at DESC LIMIT ?)
          ORDER BY updated_at DESC`,
-        [companyId, agentId, companyId, agentId, settledSince, settledLimit],
+        [companyId, agentId, ...list.servers, ...list.open, companyId, agentId, ...list.servers, list.settledSince, ...list.open, list.settledLimit],
       ).map(toCodingThread)
     },
 
@@ -798,8 +809,9 @@ export async function openForkStore(file: string) {
 
     /** Copies one poll of T3 in one write. The poller hands over every thread on
      *  every poll, so nothing is written when no status, title, run, question,
-     *  pull request or settling changed. A row keeps the agent of its first copy
-     *  and the room its first wake found. Returns the workspaces whose rows changed. */
+     *  pull request or settling changed and T3 listed the thread before too. A
+     *  row keeps the agent of its first copy, the room its first wake found and
+     *  the wake it had. Returns the workspaces whose rows changed. */
     saveCodingThreads(threads: NewCodingThread[]): Set<string> {
       const changed = new Set<string>()
       db.run('BEGIN')
@@ -811,10 +823,10 @@ export async function openForkStore(file: string) {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (server, thread_id) DO UPDATE SET
                title = excluded.title, status = excluded.status, run_id = excluded.run_id, request_id = excluded.request_id,
-               pull_requests = excluded.pull_requests, updated_at = excluded.updated_at, settled_at = excluded.settled_at
+               pull_requests = excluded.pull_requests, updated_at = excluded.updated_at, settled_at = excluded.settled_at, unlisted = 0
              WHERE title IS NOT excluded.title OR status IS NOT excluded.status OR run_id IS NOT excluded.run_id
                 OR request_id IS NOT excluded.request_id OR pull_requests IS NOT excluded.pull_requests
-                OR settled_at IS NOT excluded.settled_at
+                OR settled_at IS NOT excluded.settled_at OR unlisted <> 0
              RETURNING company_id`,
             [t.server, t.threadId, t.companyId, t.agentId, t.conversationId, t.title, t.status, t.runId, t.requestId,
               JSON.stringify(t.pullRequests), t.createdAt, t.updatedAt, t.settledAt, t.woken],
@@ -829,24 +841,28 @@ export async function openForkStore(file: string) {
       return changed
     },
 
-    /** Drops the threads copied from `server` other than `threadIds`, the
-     *  marked threads a whole read of it found: T3 no longer lists the rest,
-     *  so they were archived, deleted or renamed without the mark there.
-     *  Returns the workspaces that lost a thread. */
-    dropCodingThreads(server: string, threadIds: string[]): Set<string> {
-      // SQLite takes an empty IN list, so a read that found nothing drops every thread of the server.
+    /** Takes the threads copied from `server` other than `threadIds`, the
+     *  marked threads a whole read of it found, out of the list: T3 no longer
+     *  lists them, so they were archived, deleted or renamed without the mark
+     *  there. Their rows stay, so a thread T3 lists again is not new, and does
+     *  not wake its agent again for a rest it was woken for. Returns the
+     *  workspaces whose list lost a thread. */
+    unlistCodingThreads(server: string, threadIds: string[]): Set<string> {
+      // SQLite takes an empty IN list, so a read that found nothing unlists every thread of the server.
       const gone = rows(
-        `DELETE FROM coding_threads WHERE server = ? AND thread_id NOT IN (${threadIds.map(() => '?').join(', ')}) RETURNING company_id`,
+        `UPDATE coding_threads SET unlisted = 1
+          WHERE server = ? AND unlisted = 0 AND thread_id NOT IN (${threadIds.map(() => '?').join(', ')}) RETURNING company_id`,
         [server, ...threadIds],
       )
       if (gone.length > 0) save()
       return new Set(gone.map(([companyId]) => String(companyId)))
     },
 
-    /** Whether a thread copied from `server` is in one of `statuses`. */
+    /** Whether a thread copied from `server` that T3 still lists is in one of
+     *  `statuses`; one T3 stopped listing while it ran would keep it hot for good. */
     codingThreadIn(server: string, statuses: readonly string[]): boolean {
       return rows(
-        `SELECT 1 FROM coding_threads WHERE server = ? AND status IN (${statuses.map(() => '?').join(', ')}) LIMIT 1`,
+        `SELECT 1 FROM coding_threads WHERE server = ? AND unlisted = 0 AND status IN (${statuses.map(() => '?').join(', ')}) LIMIT 1`,
         [server, ...statuses],
       ).length > 0
     },

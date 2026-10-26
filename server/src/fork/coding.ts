@@ -15,9 +15,11 @@
  * its own, so one that sleeps holds back nothing. A change is announced to the
  * workspace, whose open Coding tabs then read their list again. A thread keeps
  * the agent of its first copy, so renaming it in T3 does not move it. A thread
- * renamed without its mark, archived or deleted in T3 leaves the copy at the
- * next whole read of its server. The tab lists every thread of an agent not yet
- * settled in T3 (marked as dealt with there), and only the recently settled ones.
+ * renamed without its mark, archived or deleted in T3 leaves the list at the
+ * next whole read of its server, and so does every thread of a server taken
+ * off the instance's list. The tab lists every thread of an agent not yet
+ * settled in T3 (marked as dealt with there) or still moving, and only the
+ * recently settled ones of the rest.
  *
  * compose names the T3 servers in T3_FILE (the MCP server name Claude Code
  * knows each by, its URL and its token file) and mounts the server's own T3
@@ -52,6 +54,9 @@ const HOT_MS = 3_000
 const COLD_MS = 60_000
 // T3's statuses of a thread that is still moving (the Coding tab's ACTIVE).
 const MOVING = ['preparing', 'queued', 'starting', 'running', 'waiting'] as const
+// A thread moving or waiting for an answer is listed even when settled in T3,
+// which the tab then shows as moving (CodingTab.tsx isSettled).
+const OPEN = [...MOVING, 'question']
 // Same convention as the recorder: relative to the server's cwd, where compose
 // puts the T3 server list and mounts the server's T3 tokens.
 const T3_FILE = resolve(process.cwd(), 'server/computer/t3code.json')
@@ -254,7 +259,10 @@ export async function markedThreads(server: T3Server): Promise<ReadThread[]> {
             ? (await t3.call<{ requestIds: string[] }>('t3_pending_request_list', { threadId: t.threadId })).requestIds
             : []
           const pullRequests = (t.pullRequests ?? []).map(({ number, url, state }) => ({ number, url, state }))
-          threads.push({ ...t, pullRequests, requestId: asked[0] ?? null })
+          // In toISOString()'s form, which the list compares as text. A time
+          // that is no time fails the read here, so it shows under the list.
+          const settledAt = t.settledAt === null ? null : new Date(t.settledAt).toISOString()
+          threads.push({ ...t, pullRequests, requestId: asked[0] ?? null, settledAt })
         }
         if (typeof page.nextCursor !== 'number' || page.threads.length === 0) break
         cursor = page.nextCursor
@@ -430,7 +438,10 @@ async function wake(t: CodingThread): Promise<void> {
 // same failure on every poll is logged once.
 const pollErrors = new Map<string, string>()
 
-async function poll(server: T3Server): Promise<void> {
+/** One read of a T3 server into the copy, the announcement of what changed,
+ *  and the wakes it makes due.
+ *  Exported for tests, which fake T3 at fetch. */
+export async function poll(server: T3Server): Promise<void> {
   const failed = pollErrors.get(server.name)
   const seen: Array<{ thread: ReadThread; agentId: string; title: string }> = []
   // Only a whole read says which threads T3 no longer lists.
@@ -468,7 +479,7 @@ async function poll(server: T3Server): Promise<void> {
   const changed = store.saveCodingThreads(threads)
   // The tab lists every unsettled thread, so a copy T3 no longer lists would
   // stay in it for good.
-  if (whole) for (const id of store.dropCodingThreads(server.name, seen.map((s) => s.thread.threadId))) changed.add(id)
+  if (whole) for (const id of store.unlistCodingThreads(server.name, seen.map((s) => s.thread.threadId))) changed.add(id)
   if (pollErrors.get(server.name) !== failed) for (const id of await agentWorkspaces()) changed.add(id)
   await announce(changed)
   for (const t of store.codingWakesDue(server.name, WAKE_STATUSES)) await wake(t)
@@ -538,10 +549,17 @@ export async function agentCoding(requireCompany: Requirer, req: Request & Authe
     res.status(404).json({ error: 'not found' })
     return
   }
-  const threads = (await getForkStore()).codingThreads(companyId, agentId, new Date(Date.now() - SETTLED_MS).toISOString(), SETTLED_LIST)
+  // Only the servers the instance still reads: nothing takes a removed one's threads out of the copy.
+  const { servers } = t3File()
+  const threads = (await getForkStore()).codingThreads(companyId, agentId, {
+    servers: servers.map((s) => s.name),
+    open: OPEN,
+    settledSince: new Date(Date.now() - SETTLED_MS).toISOString(),
+    settledLimit: SETTLED_LIST,
+  })
   res.json({
     threads: threads.map(shownThread),
-    servers: t3File().servers.map((s) => ({ name: s.name, error: pollErrors.get(s.name) ?? null })),
+    servers: servers.map((s) => ({ name: s.name, error: pollErrors.get(s.name) ?? null })),
   })
 }
 

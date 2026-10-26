@@ -26,6 +26,7 @@ import { useLocale } from '@/lib/i18n'
 import type { Conversation } from '@/types'
 import { useNT } from '../i18n'
 import { dateTime } from '../format'
+import { useNearestScroller } from '../hooks'
 import { getRoute, href, navigate, useRoute, withRoute } from '../router'
 import { Avatar } from '../ui/Avatar'
 import { Menu, Spinner, useMenu } from '../ui/primitives'
@@ -513,11 +514,8 @@ function Document({ data, agentId, since, at, stale, failed, retry, docked }: {
   const changes = useMemo(() => new Map(data.changes.map((c) => [c.n, c])), [data.changes])
   const ctx = useMemo(() => ({ changes, agentId, docked }), [changes, agentId, docked])
   const shown = stepOf(data.changes, at)
-  const [scroller, setScroller] = useState<HTMLElement | null>(null)
   // The page's scroller holds the document, so it scrolls as one surface.
-  const root = useCallback((el: HTMLDivElement | null) => {
-    if (el) setScroller(el.closest<HTMLElement>('.nx-scroll'))
-  }, [])
+  const [scroller, root] = useNearestScroller()
   const map = useMemo(() => mapOf(rows), [rows])
   const excerpts = useMemo(() => excerptsOf(rows), [rows])
   const [full, setFull] = useState(false)

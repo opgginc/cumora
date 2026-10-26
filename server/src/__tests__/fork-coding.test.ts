@@ -22,7 +22,7 @@ writeFileSync(join(root, 'server/computer/t3code/tok'), 'token-123\n')
 writeFileSync(join(root, 'server/computer/t3code/bad'), 'token-line-one\ntoken-line-two\n')
 const cwd = process.cwd()
 process.chdir(root)
-const { agentCoding, codingThread, markedThreads, parseMark, threadDetail } = await import('../fork/coding.js')
+const { agentCoding, codingThread, markedThreads, parseMark, poll, threadDetail } = await import('../fork/coding.js')
 process.chdir(cwd)
 after(() => rmSync(root, { recursive: true, force: true }))
 
@@ -77,18 +77,21 @@ test('a poll reads every page of every live project, asks running threads for a 
         nextCursor: 2,
       }
     }
-    // An older T3 server sends no pull request list at all.
-    if (name === 't3_thread_list') return { threads: [thread('th-3', 'completed', { pullRequests: undefined })], nextCursor: null }
+    // An older T3 server sends no pull request list at all. A settled time in
+    // another form than toISOString()'s would break the list's text compare.
+    if (name === 't3_thread_list') {
+      return { threads: [thread('th-3', 'completed', { pullRequests: undefined, settled: true, settledAt: '2026-10-21T09:00:00+09:00' })], nextCursor: null }
+    }
     if (name === 't3_pending_request_list') return { requestIds: args.threadId === 'th-1' ? ['q-1'] : [] }
     throw new Error(`unexpected ${name}`)
   })
 
   const threads = await markedThreads(server('tok'))
 
-  assert.deepEqual(threads.map((x) => [x.threadId, x.status, x.requestId, x.pullRequests]), [
-    ['th-1', 'running', 'q-1', []],
-    ['th-2', 'waiting', null, [{ number: 7, url: 'https://github.com/o/r/pull/7', state: null }]],
-    ['th-3', 'completed', null, []],
+  assert.deepEqual(threads.map((x) => [x.threadId, x.status, x.requestId, x.pullRequests, x.settledAt]), [
+    ['th-1', 'running', 'q-1', [], null],
+    ['th-2', 'waiting', null, [{ number: 7, url: 'https://github.com/o/r/pull/7', state: null }], null],
+    ['th-3', 'completed', null, [], '2026-10-21T00:00:00.000Z'],
   ])
   assert.deepEqual(calls, [
     't3_project_list {"limit":100}',
@@ -273,6 +276,8 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
     await agentCoding(async () => ({ userId: 'u1', companyId: 'c1' }), { params: { agentId: 'bot' } } as never, res as never)
     return res
   }
+  assert.deepEqual((await list()).body?.threads, [], 'a T3 server taken off the list lists nothing')
+  writeFileSync(join(root, 'server/computer/t3code.json'), JSON.stringify({ servers: [server('tok')] }))
   assert.deepEqual((await list()).body?.threads.map((x) => x.threadId), ['th-1'])
   // Of the settled threads, the list keeps those settled within three days.
   const settled = (threadId: string, hoursAgo: number) => ({
@@ -286,4 +291,65 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
   assert.equal((await list()).code, 404, 'not an agent of the workspace')
   role = 'member'
   assert.equal((await list()).code, 403, 'a member is refused the list too')
+})
+
+test('a poll unlists what a whole read no longer finds, keeps the copy when the read fails, and wakes once for one rest', async (t) => {
+  // db/pool.js and redis.js load env.ts, which exits without OPENAI_API_KEY.
+  // With the HTTP runtime client, redis.js connects only on a command, and
+  // publish is faked.
+  process.env.OPENAI_API_KEY ??= 'test-key'
+  process.env.CUMORA_RUNTIME_CLIENT ??= 'http'
+  const [{ pool }, { redis }, { codingWakeKey, getForkStore }] = await Promise.all([
+    import('../db/pool.js'), import('../redis.js'), import('../fork/store.js'),
+  ])
+  // The agent `bot` is in workspace c1, and no turn has recorded a call, so a
+  // due wake finds no room and waits for the next poll.
+  t.mock.method(pool, 'query', async (sql: string) => ({ rows: sql.includes('llm_calls') ? [] : [{ id: 'bot', company_id: 'c1' }] }))
+  const announced: string[] = []
+  t.mock.method(redis, 'publish', (async (_channel: string, message: string) => {
+    announced.push((JSON.parse(message) as { companyId: string }).companyId)
+    return 1
+  }) as never)
+  let listed: object[] = []
+  let down = false
+  fakeT3(t, (name) => {
+    if (down) throw new Error('T3 is down')
+    if (name === 't3_project_list') return { projects: [{ id: 'p1', deletedAt: null }], nextCursor: null }
+    if (name === 't3_thread_list') return { threads: listed, nextCursor: null }
+    throw new Error(`unexpected ${name}`)
+  })
+  // Its own server name: the store is the one the route test above wrote to.
+  const t3 = { ...server('tok'), name: 'poll-t3' }
+  const store = await getForkStore()
+  const shown = () => store.codingThreads('c1', 'bot', { servers: [t3.name], open: [], settledSince: '', settledLimit: 20 }).map((x) => x.threadId).sort()
+  const now = new Date().toISOString()
+  const both = [thread('th-a', 'completed', { updatedAt: now }), thread('th-b', 'idle', { updatedAt: now })]
+
+  listed = both
+  await poll(t3)
+  assert.deepEqual(shown(), ['th-a', 'th-b'])
+  assert.deepEqual(announced, ['c1'])
+  // th-a came to rest a moment ago; its agent is woken for it.
+  const rested = store.codingThread('c1', t3.name, 'th-a')
+  assert.ok(rested)
+  store.markCodingWoken(t3.name, 'th-a', codingWakeKey(rested), null, 'room')
+
+  down = true
+  announced.length = 0
+  await poll(t3)
+  assert.deepEqual(shown(), ['th-a', 'th-b'], 'a failed read takes nothing out of the list')
+  assert.deepEqual(announced, ['c1'], 'only the failure is news')
+
+  down = false
+  listed = [both[1]]
+  announced.length = 0
+  await poll(t3)
+  assert.deepEqual(shown(), ['th-b'], 'a thread T3 no longer lists leaves the list')
+  assert.deepEqual(announced, ['c1'])
+
+  // T3 lists it again (unarchived), still within the half hour a new copy would be woken for.
+  listed = both
+  await poll(t3)
+  assert.deepEqual(shown(), ['th-a', 'th-b'])
+  assert.deepEqual(store.codingWakesDue(t3.name, ['completed']), [], 'its agent is not woken twice for one rest')
 })

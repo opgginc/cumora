@@ -11,7 +11,7 @@
  * the same lists through `useCoding`; the drawer and the workspace show
  * the list and its detail through `CodingList`.
  */
-import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type ListProps } from 'react-virtuoso'
 import { http, ws } from '@/api/client'
 import { RichBody } from '@/components/Message'
@@ -20,7 +20,7 @@ import { useParticipants } from '@/stores/participants'
 import type { Conversation, Participant } from '@/types'
 import { agentRef } from '../agentRefs'
 import { relative } from '../format'
-import { useAdmin, useCopy } from '../hooks'
+import { useAdmin, useCopy, useNearestScroller } from '../hooks'
 import { useNT, type NKey } from '../i18n'
 import { linkClick, useRoute, withRoute } from '../router'
 import { Avatar } from '../ui/Avatar'
@@ -258,7 +258,7 @@ function ThreadDetail({ open, listed, several }: {
   }, [path])
   // The list's copy of this thread. Its first arrival (a thread opened from a
   // link, before the list loaded) is no change: T3 was read when the detail opened.
-  const changed = listed ? `${listed.t.status} ${listed.t.updatedAt}` : null
+  const changed = listed ? `${listed.t.status} ${listed.t.updatedAt} ${listed.t.settledAt}` : null
   const seen = useRef(changed)
   useEffect(() => {
     if (seen.current !== null && changed !== null && changed !== seen.current) reload.current()
@@ -365,10 +365,7 @@ function ThreadRows({ rows, fresh, agents, server }: {
   server: boolean
 }) {
   const route = useRoute()
-  const [scroller, setScroller] = useState<HTMLElement | null>(null)
-  const root = useCallback((el: HTMLDivElement | null) => {
-    if (el) setScroller(el.closest<HTMLElement>('.nx-scroll'))
-  }, [])
+  const [scroller, root] = useNearestScroller()
   const context = useMemo(() => ({ fresh }), [fresh])
   const byId = new Map(agents.map((a) => [a.id, a]))
   return (
