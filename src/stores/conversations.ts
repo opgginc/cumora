@@ -8,7 +8,7 @@ import { useMessages } from '@/stores/messages'
 import { useParticipants } from '@/stores/participants'
 import { isWindowAttentive } from '@/lib/windowAttention'
 import { isWatchingConversation } from '@/lib/watching'
-import { t } from '@/lib/i18n'
+import { t, useLocaleStore } from '@/lib/i18n'
 
 interface ConversationsState {
   list: Conversation[]
@@ -276,6 +276,10 @@ export function bootConversations() {
   void useConversations.getState().load()
   if (wsBound) return
   wsBound = true
+  // previewOf() bakes the translated "You" into each row, so a language switch rebuilds the rows.
+  useLocaleStore.subscribe((s, prev) => {
+    if (s.locale !== prev.locale) void useConversations.getState().reload()
+  })
   ws.connect()
   ws.on((e) => {
     if (e.type === 'hello') {

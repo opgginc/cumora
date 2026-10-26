@@ -150,7 +150,7 @@ export const ko: Record<keyof typeof en, string> = {
   'tokens.tools': '도구 호출 {n}회',
   'msg.loadFailed': '메시지를 불러오지 못했어요',
   'msg.retry': '다시 시도',
-  'msg.discard': '삭제',
+  'msg.discard': '숨기기',
   'msg.failed': '전송되지 않았어요.',
   'msg.unconfirmed': '전송 여부를 확인하지 못했어요.',
   'msg.reply': '답장',

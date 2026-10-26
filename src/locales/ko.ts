@@ -55,7 +55,7 @@ export const ko: Partial<Record<keyof typeof en, string>> = {
   'chat.inThisConversation': '이 대화에 연결됨',
   'chat.deliveryUnconfirmed': '전송 여부를 확인하지 못했어요.',
   'chat.failedToSend': '전송되지 않았어요.',
-  'chat.dismiss': '삭제',
+  'chat.dismiss': '숨기기',
 
   // ─── info pane + thread extras ───
   'thread.reply': '개의 답장',

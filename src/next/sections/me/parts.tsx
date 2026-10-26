@@ -10,7 +10,7 @@ import {
 import { Virtuoso } from 'react-virtuoso'
 import { api } from '@/api/client'
 import { copyText } from '@/lib/clipboard'
-import { LOCALES, useLocaleStore, type Locale } from '@/lib/i18n'
+import { detectLocale, LOCALES, useLocaleStore, type Locale } from '@/lib/i18n'
 import { useAuth } from '@/stores/auth'
 import { useParticipants } from '@/stores/participants'
 import { usePrefs } from '@/stores/preferences'
@@ -163,18 +163,6 @@ export function useAutoLocale(): boolean {
   return useSyncExternalStore(subscribeAuto, readAuto)
 }
 
-/** First supported locale in the browser's list, matched on the language
- *  subtag (zh-TW → zh-CN, en-GB → en), like lib/i18n on a first run. */
-export function browserLocale(): Locale {
-  const tags = navigator.languages?.length ? navigator.languages : [navigator.language]
-  for (const tag of tags) {
-    const lang = tag?.toLowerCase().split('-')[0]
-    const hit = LOCALES.find((l) => l.code.toLowerCase().split('-')[0] === lang)
-    if (hit) return hit.code
-  }
-  return 'en'
-}
-
 export function localeLabel(code: Locale): string {
   return LOCALES.find((l) => l.code === code)?.label ?? code
 }
@@ -184,7 +172,7 @@ export function chooseLocale(choice: Locale | 'auto'): void {
   if (choice !== 'auto') {
     setLocale(choice)
   } else {
-    setLocale(browserLocale())
+    setLocale(detectLocale())
     // setLocale persisted the pick; removing it is what makes the next start detect again.
     try { localStorage.removeItem(LOCALE_KEY) } catch (e) { console.warn('[me] could not clear the stored locale', e) }
   }
