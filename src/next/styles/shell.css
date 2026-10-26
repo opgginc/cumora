@@ -153,17 +153,21 @@ body.keyboard-open .nx-tabbar { display: none; }
 .nx-app:has(.nx-tabbar) .nx-sidebar__scroll { padding-bottom: calc(64px + var(--safe-bottom)); }
 
 /* ── Chats layout ──────────────────────────────────────────────────── */
-/* ChatsSection sets the list and panel widths (this device's own, or the
-   defaults). A side column never goes under its floor, and the chat column
-   keeps 400px: a window too narrow for both widths squeezes the side columns,
-   never the chat. */
+/* ChatsSection sets every width here as a custom property (chat/columns.ts):
+   the list and panel widths, this device's own or the defaults, and the floors.
+   A side column never goes under its floor, and the chat column keeps its
+   minimum: a window too narrow for both widths squeezes the side columns,
+   never the chat. Without a docked panel the third track is empty. */
 .nx-chats {
   display: grid;
-  grid-template-columns: minmax(220px, var(--nx-list-w)) minmax(400px, 1fr);
+  grid-template-columns: minmax(var(--nx-list-min), var(--nx-list-w)) minmax(var(--nx-chat-min), 1fr) var(--nx-panel-track, 0px);
   height: 100%;
   min-height: 0;
 }
-.nx-chats[data-panel="dock"] { grid-template-columns: minmax(220px, var(--nx-list-w)) minmax(400px, 1fr) minmax(320px, var(--nx-panel-w)); }
+.nx-chats[data-panel="dock"] { --nx-panel-track: minmax(var(--nx-panel-min), var(--nx-panel-w)); }
+/* Not inherited: a new width restyles .nx-chats alone, not every element in it. */
+@property --nx-list-w { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --nx-panel-w { syntax: '<length>'; inherits: false; initial-value: 0px; }
 .nx-chats__list { position: relative; min-width: 0; min-height: 0; }
 .nx-panel-dock { position: relative; min-width: 0; min-height: 0; border-left: 1px solid var(--border); background: var(--sidebar); }
 
@@ -192,19 +196,22 @@ body.keyboard-open .nx-tabbar { display: none; }
   width: 2px;
   background: var(--primary);
   opacity: 0;
+  transform: translateX(var(--nx-ghost, 0px));
   transition: opacity var(--duration-quick);
 }
 /* The line waits a moment, so a pointer crossing the border does not flash it. */
 @media (hover: hover) {
   .nx-resizer:hover::after { opacity: 1; transition-delay: 150ms; }
 }
-.nx-resizer[data-dragging]::after { opacity: 1; transition-delay: 0s; }
+/* While dragged, the line shows where the edge will go: it moves on its own
+   layer by --nx-ghost, and the columns wait for the release. */
+.nx-resizer[data-dragging]::after { opacity: 1; transition-delay: 0s; will-change: transform; }
 html.nx .nx-resizer:focus-visible { outline: none; }
 .nx-resizer:focus-visible::after { opacity: 1; background: var(--ring); }
-/* While a handle is dragged, the cursor stays a resize cursor over whatever it
-   passes, and nothing gets selected. */
-html.nx:has(.nx-resizer[data-dragging]),
-html.nx:has(.nx-resizer[data-dragging]) * { cursor: col-resize; user-select: none; }
+/* While dragged, a sheet over the window keeps the resize cursor and takes the
+   hover from whatever the pointer passes. It hangs off the handle, so starting
+   and ending a drag restyles the handle alone, not the page. */
+.nx-resizer[data-dragging]::before { content: ''; position: fixed; inset: 0; cursor: col-resize; }
 
 .nx-panel-overlay { position: absolute; inset: 0; z-index: 30; }
 .nx-panel-sheet {

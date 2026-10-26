@@ -17,7 +17,7 @@ A second UI for cumora, served at `/next` on the same origin. `App.tsx` mounts `
 
 ## Column widths
 
-With a mouse, drag the line between the chat list and the conversation, or the line on the room panel's left edge, to make that column wider or narrower. A focused line moves with the arrow keys, and a double-click puts its column back to the default width. Each device keeps its own widths in `localStorage`. The conversation never gets narrower than `CHAT_MIN` (`chat/ChatsSection.tsx`): a drag stops there, and a window too narrow for the chosen widths draws the list and the panel narrower until there is room again. Touch screens show no handles and keep the default widths.
+With a mouse, drag the line between the chat list and the conversation, or the line on the room panel's left edge: the line follows the pointer, and the column takes the new width when you let go. A focused line moves with the arrow keys, and a double-click puts its column back to the default width. Each device keeps its own widths in `localStorage`. The conversation never gets narrower than `CHAT_MIN` (`chat/columns.ts`, with the other limits): a drag stops there, and a window too narrow for the chosen widths draws the list and the panel narrower until there is room again. Touch screens show no handles and keep the default widths, even ones a mouse chose on the same device.
 
 ## Agents at work
 

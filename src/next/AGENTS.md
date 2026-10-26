@@ -24,7 +24,7 @@ Design and check every layout and every action for all three screens the app run
 - **Fold 8 unfolded:** the inner screen, a near-square touch screen that lands in the split layout with a coarse pointer. Touch rules apply even though the layout is the tablet one: no hover-only or drag-only action, 44px targets.
 - **PC:** the desktop app and the web with a mouse and keyboard. Full layout, hover, right-click, drag, shortcuts.
 
-An action that exists on one screen needs a way to do it on the others (a mouse drag needs a long-press menu entry on touch, a hover reveal needs a tap path). On the Fold 7 the cover screen stands in for the Fold 8 cover with `wm size 1248x1972` + `wm density 360`, and the main screen stands in for the unfolded one.
+An action that exists on one screen needs a way to do it on the others (a mouse drag needs a long-press menu entry on touch, a hover reveal needs a tap path). The one exception is resizing the chat list and the room panel (`chat/columns.ts`): it is mouse-only, and touch screens keep the default widths. On the Fold 7 the cover screen stands in for the Fold 8 cover with `wm size 1248x1972` + `wm density 360`, and the main screen stands in for the unfolded one.
 
 ## Haptics
 
