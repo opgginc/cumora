@@ -163,7 +163,7 @@ export function AgentMenuHost() {
       onSelect: () => openAgentPane(p.id, 'jobs'),
     },
     ...threads.slice(0, 3).map((t): MenuItem => {
-      const { tone, icon } = look(t.status)
+      const { tone, icon } = look(t)
       return {
         key: `thread-${t.server}-${t.threadId}`,
         label: t.title,

@@ -44,6 +44,17 @@ function noopSubscribe(): () => void {
   return () => {}
 }
 
+/** The nearest scroller (`.nx-scroll`) around the element the returned ref is
+ *  put on, for a Virtuoso list that scrolls with the panel or page it sits in
+ *  (`customScrollParent`). null until that element mounts. */
+export function useNearestScroller(): [HTMLElement | null, (el: HTMLElement | null) => void] {
+  const [scroller, setScroller] = useState<HTMLElement | null>(null)
+  const ref = useCallback((el: HTMLElement | null) => {
+    if (el) setScroller(el.closest<HTMLElement>('.nx-scroll'))
+  }, [])
+  return [scroller, ref]
+}
+
 /** A copy button's state: `copy(text)` copies, and `done` and `label` say how
  *  it went for 1.5 s, so the button can show a check (no haptic for a copy
  *  that worked) or a failure, which plays the error haptic. */

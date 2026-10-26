@@ -35,15 +35,15 @@ test('the store drops the agent, keeps its id from being given out again, and qu
   store.setPinOrder('c1', 'u1', ['dm', 'room'])
   const coding = (agentId: string) => ({
     server: 't3code', threadId: `th-${agentId}`, companyId: 'c1', agentId, conversationId: 'dm', title: 't', status: 'running',
-    runId: null, requestId: null, pullRequests: [], createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z', woken: null,
+    runId: null, requestId: null, pullRequests: [], createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z', settledAt: null, woken: null,
   })
   store.saveCodingThreads([coding('atlas'), coding('nova')])
 
   store.purgeAgent('c1', 'atlas', ['dm'], 'computer-1')
 
   assert.deepEqual(Object.keys(store.bloubAvatars('c1')), ['nova'])
-  assert.deepEqual(store.codingThreads('c1', 'atlas', 10), [])
-  assert.equal(store.codingThreads('c1', 'nova', 10).length, 1)
+  assert.deepEqual(store.codingThreads('c1', 'atlas', { servers: ['t3code'], open: [], settledSince: '2026-10-20T00:00:00.000Z', settledLimit: 20 }), [])
+  assert.equal(store.codingThreads('c1', 'nova', { servers: ['t3code'], open: [], settledSince: '2026-10-20T00:00:00.000Z', settledLimit: 20 }).length, 1)
   assert.equal(store.trigger('c1', own.id), null)
   assert.ok(store.trigger('c1', other.id))
   const layout = store.layout('c1', 'u1')

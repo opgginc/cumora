@@ -303,6 +303,7 @@ export const zhCN: Partial<Record<keyof typeof en, string>> = {
   'coding.failed': '失败',
   'coding.stopped': '已停止',
   'coding.idle': '空闲',
+  'coding.settled': '已处理',
   'coding.serverError': 'T3 服务器 {server}：{error}',
   'coding.noneAgent': '还没有 T3 Code 线程。',
   'coding.openInT3': '在 T3 中打开',
