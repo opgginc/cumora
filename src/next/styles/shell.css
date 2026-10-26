@@ -153,15 +153,58 @@ body.keyboard-open .nx-tabbar { display: none; }
 .nx-app:has(.nx-tabbar) .nx-sidebar__scroll { padding-bottom: calc(64px + var(--safe-bottom)); }
 
 /* ── Chats layout ──────────────────────────────────────────────────── */
+/* ChatsSection sets the list and panel widths (this device's own, or the
+   defaults). A side column never goes under its floor, and the chat column
+   keeps 400px: a window too narrow for both widths squeezes the side columns,
+   never the chat. */
 .nx-chats {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: minmax(220px, var(--nx-list-w)) minmax(400px, 1fr);
   height: 100%;
   min-height: 0;
 }
-.nx-app[data-layout="split"] .nx-chats { grid-template-columns: 260px minmax(0, 1fr); }
-.nx-chats[data-panel="dock"] { grid-template-columns: 280px minmax(0, 1fr) 360px; }
-.nx-panel-dock { min-width: 0; min-height: 0; border-left: 1px solid var(--border); background: var(--sidebar); }
+.nx-chats[data-panel="dock"] { grid-template-columns: minmax(220px, var(--nx-list-w)) minmax(400px, 1fr) minmax(320px, var(--nx-panel-w)); }
+.nx-chats__list { position: relative; min-width: 0; min-height: 0; }
+.nx-panel-dock { position: relative; min-width: 0; min-height: 0; border-left: 1px solid var(--border); background: var(--sidebar); }
+
+/* Resize handle (ChatsSection's Resizer): a strip over a column's border that
+   reaches into the side without a scrollbar, so it never covers the list's or
+   the transcript's. It sits above the chat column's floating header and
+   composer (z-index 6 at most) and under the panel overlay. */
+.nx-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+/* The list's border is its own right edge, the panel's the dock's left border. */
+.nx-resizer[data-edge="end"] { right: -6px; }
+.nx-resizer[data-edge="start"] { left: -1px; }
+.nx-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: var(--primary);
+  opacity: 0;
+  transition: opacity var(--duration-quick);
+}
+/* The line waits a moment, so a pointer crossing the border does not flash it. */
+@media (hover: hover) {
+  .nx-resizer:hover::after { opacity: 1; transition-delay: 150ms; }
+}
+.nx-resizer[data-dragging]::after { opacity: 1; transition-delay: 0s; }
+html.nx .nx-resizer:focus-visible { outline: none; }
+.nx-resizer:focus-visible::after { opacity: 1; background: var(--ring); }
+/* While a handle is dragged, the cursor stays a resize cursor over whatever it
+   passes, and nothing gets selected. */
+html.nx:has(.nx-resizer[data-dragging]),
+html.nx:has(.nx-resizer[data-dragging]) * { cursor: col-resize; user-select: none; }
 
 .nx-panel-overlay { position: absolute; inset: 0; z-index: 30; }
 .nx-panel-sheet {
