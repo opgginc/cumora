@@ -305,6 +305,7 @@ export const ko: Record<keyof typeof en, string> = {
   'coding.failed': '실패',
   'coding.stopped': '중지됨',
   'coding.idle': '대기 중',
+  'coding.settled': '마무리됨',
   'coding.serverError': 'T3 서버 {server}: {error}',
   'coding.noneAgent': '아직 T3 Code 스레드가 없어요.',
   'coding.openInT3': 'T3에서 열기',
