@@ -51,10 +51,20 @@ function randomLook(taken: ReadonlySet<string>): BloubPick {
   return { shape: oneOf(SHAPES).id, color: oneOf(free.length > 0 ? free : PALETTE).id, accessories: [] }
 }
 
+/** The colours the bloubs of the other active agents wear. */
+function takenColors(byId: Record<string, Participant>, looks: Record<string, BloubLook>, agentId: string | undefined): Set<string> {
+  return new Set(Object.values(byId).flatMap((p) =>
+    (p.kind === 'agent' && !p.departedAt && p.id !== agentId && looks[p.id] ? [looks[p.id].color] : [])))
+}
+
 /** The classic editor with the Look Studio in place of its avatar fields. Key
- *  it by the agent, so a draft never carries over to another one. */
+ *  it by the agent, so a draft never carries over to another one. A new agent
+ *  starts Animated, with the first look a choice of Animated would pick. */
 export function LookEditor({ agent, onClose, onSaved }: { agent: Participant | null; onClose: () => void; onSaved?: () => void }) {
-  const [draft, setDraft] = useState<Draft>({})
+  const [draft, setDraft] = useState<Draft>(() => (agent ? {} : {
+    animated: true,
+    pick: randomLook(takenColors(useParticipants.getState().byId, useBloubLooks.getState().byId, undefined)),
+  }))
   const avatar: AvatarSlot = {
     render: (portrait) => <LookStudio agent={agent} portrait={portrait} draft={draft} setDraft={setDraft} />,
     // Both writes are idempotent, so an unchanged pick is simply written again.
@@ -119,7 +129,7 @@ function LookStudio({ agent, portrait, draft, setDraft }: {
     .filter((p) => p.kind === 'agent' && !p.departedAt && p.id !== agent?.id)
     .sort((a, b) => Number(Boolean(looks[b.id])) - Number(Boolean(looks[a.id])) || a.name.localeCompare(b.name)),
   [byId, looks, agent?.id])
-  const taken = useMemo(() => new Set(others.flatMap((p) => (looks[p.id] ? [looks[p.id].color] : []))), [others, looks])
+  const taken = useMemo(() => takenColors(byId, looks, agent?.id), [byId, looks, agent?.id])
   const twin = animated && pick ? others.find((p) => looks[p.id]?.color === pick.color) : undefined
   // Accessories tell two bloubs of one shape and colour apart; one this build
   // does not draw does not.

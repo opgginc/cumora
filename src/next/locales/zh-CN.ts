@@ -66,6 +66,7 @@ export const zhCN: Partial<Record<keyof typeof en, string>> = {
   'chats.newDirect': '新消息',
   'chats.newGroup': '新建群组',
   'chats.newEmail': '新邮件',
+  'chats.newAgent': '新建智能体',
   'chats.newGroupWith': '和对方新建群组',
   'chats.message': '给 {name} 发消息',
   'chats.pinned': '置顶',

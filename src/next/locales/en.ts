@@ -57,6 +57,7 @@ const core = {
   'chats.newDirect': 'New message',
   'chats.newGroup': 'New group',
   'chats.newEmail': 'New email',
+  'chats.newAgent': 'New agent',
   'chats.newGroupWith': 'New group with them',
   'chats.message': 'Message {name}',
   'chats.pinned': 'Pinned',
