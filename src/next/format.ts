@@ -18,14 +18,16 @@ export function startOfDay(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
 }
 
-/** Sidebar stamp: time today, weekday within a week, else a short date. */
+/** Sidebar stamp: time today, weekday within a week, else a short date. Korean's
+ *  short weekday is one syllable ("금") that reads as a word on its own, so Korean
+ *  takes the long form ("금요일"), as Korean phones show it. */
 export function listStamp(iso: string | null | undefined, locale: Locale): string {
   if (!iso) return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
   const days = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86_400_000)
   if (days <= 0) return fmt(locale, { hour: '2-digit', minute: '2-digit' }).format(d)
-  if (days < 7) return fmt(locale, { weekday: 'short' }).format(d)
+  if (days < 7) return fmt(locale, { weekday: locale === 'ko' ? 'long' : 'short' }).format(d)
   return fmt(locale, { month: 'short', day: 'numeric' }).format(d)
 }
 

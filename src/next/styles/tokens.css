@@ -195,6 +195,14 @@ html.nx body {
   overscroll-behavior: none;
 }
 
+/* Korean breaks lines between any two syllables by default, which splits words
+   ("일 / 은 없어요"). Korean apps break at spaces; overflow-wrap still breaks a
+   word too long for its line. */
+html.nx:lang(ko) body {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
 html.nx,
 html.nx body,
 html.nx #root {

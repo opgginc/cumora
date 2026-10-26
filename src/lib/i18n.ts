@@ -24,8 +24,9 @@
 import { create } from 'zustand'
 import { en } from '@/locales/en'
 import { zhCN } from '@/locales/zh-CN'
+import { ko } from '@/locales/ko'
 
-export type Locale = 'en' | 'zh-CN'
+export type Locale = 'en' | 'zh-CN' | 'ko'
 export type MessageKey = keyof typeof en
 
 /** Order here is the order the language picker renders. `label` is
@@ -34,33 +35,35 @@ export type MessageKey = keyof typeof en
 export const LOCALES: Array<{ code: Locale; label: string; english: string }> = [
   { code: 'en', label: 'English', english: 'English' },
   { code: 'zh-CN', label: '简体中文', english: 'Chinese (Simplified)' },
+  { code: 'ko', label: '한국어', english: 'Korean' },
 ]
 
 const DICTS: Record<Locale, Partial<Record<MessageKey, string>>> = {
   en,
   'zh-CN': zhCN,
+  ko,
 }
 
 const STORAGE_KEY = 'cumora.locale'
 
 function isLocale(v: string | null): v is Locale {
-  return v === 'en' || v === 'zh-CN'
+  return LOCALES.some((l) => l.code === v)
 }
 
-/** First run: no stored choice, so take the browser's. `zh`, `zh-Hans`,
- *  `zh-CN`, `zh-SG` all mean "this person reads Chinese" for our purposes
+/** First run: no stored choice, so take the browser's: the first tag whose
+ *  primary subtag matches a locale in `LOCALES`. `zh`, `zh-Hans`, `zh-CN`,
+ *  `zh-SG` all mean "this person reads Chinese" for our purposes
  *  — we only ship Simplified, so anything Chinese-ish lands there rather
  *  than falling through to English. Traditional-script users get
  *  Simplified until a zh-TW dictionary exists; a wrong-script UI they can
  *  switch is still better than an English one they can't read. */
-function detectLocale(): Locale {
+export function detectLocale(): Locale {
   if (typeof navigator === 'undefined') return 'en'
   const tags = [navigator.language, ...(navigator.languages ?? [])]
   for (const tag of tags) {
-    if (!tag) continue
-    const lower = tag.toLowerCase()
-    if (lower.startsWith('zh')) return 'zh-CN'
-    if (lower.startsWith('en')) return 'en'
+    const lang = tag?.toLowerCase().split('-')[0]
+    const hit = LOCALES.find((l) => l.code.toLowerCase().split('-')[0] === lang)
+    if (hit) return hit.code
   }
   return 'en'
 }

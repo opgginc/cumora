@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import { setDevModeEnabled } from '@/api/client'
 import { useChatLayoutStore } from '@/lib/chatLayout'
-import { LOCALES, useLocaleStore } from '@/lib/i18n'
+import { detectLocale, LOCALES, useLocaleStore } from '@/lib/i18n'
 import { getPushStatus, initPushNotifications, type PushStatus } from '@/lib/push'
 import { useAppearanceStore } from '@/lib/theme'
 import { useDevtools } from '@/stores/devtools'
@@ -18,7 +18,7 @@ import type { Route } from '../../router'
 import { Spinner } from '../../ui/primitives'
 import { IChevronDown, IMonitor, IMoon, ISun } from '../../ui/icons'
 import {
-  Block, browserLocale, chooseLocale, Choices, ErrorLine, errorText, localeLabel, PrefRow, Row, setParams,
+  Block, chooseLocale, Choices, ErrorLine, errorText, localeLabel, PrefRow, Row, setParams,
   SkeletonRows, SwitchRow, useAutoLocale, usePrefsLoad,
 } from './parts'
 
@@ -83,7 +83,7 @@ export function LanguagePage() {
         value={auto ? 'auto' : locale}
         onChange={chooseLocale}
         items={[
-          { key: 'auto', label: nt('me.language.auto'), hint: nt('me.language.autoHint', { language: localeLabel(browserLocale()) }) },
+          { key: 'auto', label: nt('me.language.auto'), hint: nt('me.language.autoHint', { language: localeLabel(detectLocale()) }) },
           ...LOCALES.map((l) => ({ key: l.code, label: l.label, lang: l.code, hint: l.english === l.label ? undefined : l.english })),
         ]}
       />

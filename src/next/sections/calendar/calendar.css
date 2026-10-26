@@ -108,6 +108,8 @@
 
 /* ── Time grid (day, week) ─────────────────────────────────────────── */
 .nx-calendar-grid { --gutter: 52px; position: relative; }
+/* Korean hour labels ("오전 10시") are wider than "10 AM". */
+html.nx:lang(ko) .nx-calendar-grid { --gutter: 64px; }
 .nx-calendar-grid__top {
   position: sticky;
   top: 0;
