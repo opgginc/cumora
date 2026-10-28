@@ -468,7 +468,12 @@ html.nx .nx-room:focus-visible { outline-offset: -2px; }
   color: var(--muted-foreground);
 }
 
-.nx-rooms { display: flex; flex-direction: column; }
+/* One stacking context for the whole list, so the selection (z-index -1) sits
+   under every row while the rows' parts take no z-index. Whenever anything on
+   the page repaints (a scrolled transcript, an animated avatar), Chrome
+   layerizes the whole page again, and every stacking context in this
+   unvirtualized list adds to that pass. */
+.nx-rooms { display: flex; flex-direction: column; isolation: isolate; }
 .nx-room {
   position: relative;
   display: flex;
@@ -492,11 +497,10 @@ html.nx .nx-room:focus-visible { outline-offset: -2px; }
 .nx-room__sel {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   border-radius: var(--radius);
   background: var(--selected);
 }
-.nx-room > :not(.nx-room__sel) { position: relative; z-index: 1; }
 .nx-room__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .nx-room__top,
 .nx-room__bottom { display: flex; align-items: center; gap: 6px; min-width: 0; }

@@ -218,7 +218,6 @@
   -webkit-touch-callout: none;
 }
 .nx-msg[data-mine] .nx-msg__row { flex-direction: row-reverse; }
-.nx-msg[data-mine] .nx-msg__tools { right: auto; left: -8px; }
 /* Copy, outside the bubble at its end on the free side: right of someone
    else's bubble, left of mine (MessageList CopyText). A mouse reveals it with
    the row, like the toolbar; touch copies from the long-press sheet. */
@@ -341,7 +340,11 @@
 
 /* Hover toolbar; on touch the same actions live in the long-press sheet.
    It floats over the bubble's top corner so it never takes width from the
-   bubble (in-flow, even invisible, it crushed bubbles on narrow windows). */
+   bubble (in-flow, even invisible, it crushed bubbles on narrow windows). The
+   right corner, on my bubbles too: mine end at the transcript's edge, and the
+   toolbar grows from there into the bubble, never past the row. Even hidden,
+   anything past the edge gives the transcript a horizontal scrollbar, which
+   comes and goes with the rows mounted during a scroll and resizes the list. */
 .nx-msg__tools {
   position: absolute;
   top: -20px;
