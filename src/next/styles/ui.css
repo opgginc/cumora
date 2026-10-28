@@ -159,12 +159,13 @@
   border-radius: 999px;
   object-fit: cover;
 }
-/* Presence dot: emerald online, amber waiting. Working agents get the ring. */
+/* Presence dot: emerald online, amber waiting. Working agents get the ring.
+   As the avatar's last child it paints over the photo in tree order; a z-index
+   would open a stacking context in every chat-list row that shows one. */
 .nx-avatar__dot {
   position: absolute;
   right: -1px;
   bottom: -1px;
-  z-index: 1;
   border-radius: 999px;
   box-shadow: 0 0 0 2px var(--nx-avatar-ring, var(--card));
 }

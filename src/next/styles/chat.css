@@ -386,6 +386,11 @@
   transform: scale(0.96);
   transition: opacity var(--duration-quick), transform var(--duration-quick) var(--ease-smooth-out);
 }
+/* Someone else's bubble takes its own outer corner, the left, where a 1:1
+   room's bubble starts at the transcript's edge: the toolbar grows from there
+   over the bubble and stays inside the message's 16px side padding, however
+   short the bubble. */
+.nx-msg:not([data-mine]) .nx-msg__tools { right: auto; left: -8px; }
 @media (hover: hover) and (pointer: fine) {
   .nx-msg__row:hover .nx-msg__tools,
   .nx-msg__row:focus-within .nx-msg__tools { opacity: 1; pointer-events: auto; transform: none; }
