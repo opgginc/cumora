@@ -167,14 +167,18 @@
 }
 .nx-msg[data-mine] .nx-msg__col { align-items: flex-end; }
 /* Someone else's later times sit right of the bubble, so on a narrow screen a
-   bubble beside the avatar column (28px and its 8px gap) leaves room for the
-   widest one ("오전 12:00", 59px) after its 6px gap. A mouse also shows the copy
-   button there, and the time steps 32px aside for it into the row's 16px
-   padding. Wider screens hit the 78% and 560px caps first. */
-.nx-chat:not([data-direct]) .nx-msg:not([data-mine]) > .nx-msg__col { max-width: min(78%, 560px, calc(100% - 101px)); }
+   bubble leaves room there for the widest one ("오전 12:00", 59px) after its 6px
+   gap, and with a mouse for the 32px it steps aside for the copy button. The
+   time then ends inside the row, and its 4px tap target inside the row's 16px
+   padding: anything past the transcript's edge would scroll it sideways.
+   Beside the avatar column a bubble also gives up the column's 28px and its 8px
+   gap. Wider screens hit the 78% and 560px caps first. */
+.nx-chat { --nx-time-room: 65px; }
 @media (pointer: fine) {
-  .nx-chat:not([data-direct]) .nx-msg:not([data-mine]) > .nx-msg__col { max-width: min(78%, 560px, calc(100% - 117px)); }
+  .nx-chat { --nx-time-room: 97px; }
 }
+.nx-chat .nx-msg:not([data-mine]) > .nx-msg__col { max-width: min(78%, 560px, calc(100% - var(--nx-time-room))); }
+.nx-chat:not([data-direct]) .nx-msg:not([data-mine]) > .nx-msg__col { max-width: min(78%, 560px, calc(100% - 36px - var(--nx-time-room))); }
 .nx-msg__name {
   display: flex;
   align-items: baseline;
