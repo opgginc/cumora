@@ -966,7 +966,11 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
       <Virtuoso
         ref={ref}
         scrollerRef={onScroller}
-        className="nx-transcript__scroller"
+        // With a mouse, nx-scroll gives it a standard scrollbar, which scrolls
+        // on the compositor. The classic stylesheet's ::-webkit-scrollbar is
+        // painted on the main thread at every scrolled frame, and each of
+        // those repaints re-layerizes the whole page, the chat list included.
+        className="nx-transcript__scroller nx-scroll"
         data={items}
         firstItemIndex={firstItemIndex}
         // Open at the newest message with its bottom edge in view, like every messenger.
