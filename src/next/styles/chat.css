@@ -141,6 +141,10 @@
   --nx-copy: 28px;
   --nx-copy-gap: 4px;
   --nx-copy-step: calc(var(--nx-copy) + var(--nx-copy-gap));
+  /* The sender's name line over a turn's first bubble, and the column's gap
+     between the two, which the hover toolbar clears. */
+  --nx-name-line: 18px;
+  --nx-col-gap: 4px;
   /* What someone else's bubble leaves free beside it (see .nx-msg__col): the
      avatar column, and right of the bubble its time, which with a mouse also
      steps aside for the copy button. */
@@ -181,7 +185,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: var(--nx-col-gap);
 }
 .nx-msg[data-mine] .nx-msg__col { align-items: flex-end; }
 /* Someone else's later times sit right of the bubble, so on a narrow screen a
@@ -200,6 +204,7 @@
   padding-left: 12px;
   font-size: var(--text-caption);
   font-weight: 500;
+  line-height: var(--nx-name-line);
   color: var(--muted-foreground);
 }
 /* Message times (MessageList TimeStamp). Every message has one; `data-shown`
@@ -364,11 +369,13 @@
 
 /* Hover toolbar; on touch the same actions live in the long-press sheet.
    It floats over the bubble's top corner so it never takes width from the
-   bubble (in-flow, even invisible, it crushed bubbles on narrow windows). The
-   right corner, on my bubbles too: mine end at the transcript's edge, and the
-   toolbar grows from there into the bubble, never past the row. Even hidden,
-   anything past the edge gives the transcript a horizontal scrollbar, which
-   comes and goes with the rows mounted during a scroll and resizes the list. */
+   bubble (in-flow, even invisible, it crushed bubbles on narrow windows). It
+   takes the bubble's outer corner, the left of someone else's and the right of
+   mine, where the bubble meets the transcript's edge in a 1:1 room or on a
+   phone, and grows from there over the bubble: it stays inside the message's
+   16px side padding however short the bubble is. Even hidden, anything past
+   the transcript's edge gives it a horizontal scrollbar, which comes and goes
+   with the rows mounted during a scroll and resizes the list. */
 .nx-msg__tools {
   position: absolute;
   top: -20px;
@@ -386,11 +393,11 @@
   transform: scale(0.96);
   transition: opacity var(--duration-quick), transform var(--duration-quick) var(--ease-smooth-out);
 }
-/* Someone else's bubble takes its own outer corner, the left, where a 1:1
-   room's bubble starts at the transcript's edge: the toolbar grows from there
-   over the bubble and stays inside the message's 16px side padding, however
-   short the bubble. */
 .nx-msg:not([data-mine]) .nx-msg__tools { right: auto; left: -8px; }
+/* A turn's first message has the sender's name line right above the bubble,
+   under the toolbar's corner, so there the toolbar rises above that line (its
+   own 32px: 28px buttons and 2px padding) into the gap before the turn. */
+.nx-msg__col:has(> .nx-msg__name) > .nx-msg__row > .nx-msg__tools { top: calc(-1 * (var(--nx-name-line) + var(--nx-col-gap) + 32px)); }
 @media (hover: hover) and (pointer: fine) {
   .nx-msg__row:hover .nx-msg__tools,
   .nx-msg__row:focus-within .nx-msg__tools { opacity: 1; pointer-events: auto; transform: none; }
