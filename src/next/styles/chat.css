@@ -141,15 +141,15 @@
   --nx-copy: 28px;
   --nx-copy-gap: 4px;
   --nx-copy-step: calc(var(--nx-copy) + var(--nx-copy-gap));
-  /* The sender's name line over a turn's first bubble, and the column's gap
-     between the two, which the hover toolbar clears. */
-  --nx-name-line: 18px;
-  --nx-col-gap: 4px;
+  /* 1 where a time sits right of its bubble (someone else's), -1 where it
+     sits left (mine): the way it steps aside for the copy button. */
+  --nx-stamp-dir: 1;
   /* What someone else's bubble leaves free beside it (see .nx-msg__col): the
      avatar column, and right of the bubble its time, which with a mouse also
-     steps aside for the copy button. */
+     steps aside for the copy button (--nx-time-extra). */
   --nx-gutter-room: calc(var(--nx-gutter) + var(--nx-msg-gap));
-  --nx-time-room: calc(var(--nx-stamp-gap) + var(--nx-stamp-max));
+  --nx-time-extra: 0px;
+  --nx-time-room: calc(var(--nx-stamp-gap) + var(--nx-stamp-max) + var(--nx-time-extra));
   position: relative;
   display: flex;
   align-items: flex-end;
@@ -161,7 +161,7 @@
 }
 .nx-msg[data-pos="single"],
 .nx-msg[data-pos="first"] { padding-top: 8px; }
-.nx-msg[data-mine] { flex-direction: row-reverse; }
+.nx-msg[data-mine] { flex-direction: row-reverse; --nx-stamp-dir: -1; }
 /* Avatar column: a turn's avatar sits at its top beside the name row. It is as
    wide as the avatar, which then starts at the row's padding and sits 8px from
    the name and the bubble. */
@@ -185,7 +185,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--nx-col-gap);
+  gap: 4px;
 }
 .nx-msg[data-mine] .nx-msg__col { align-items: flex-end; }
 /* Someone else's later times sit right of the bubble, so on a narrow screen a
@@ -194,7 +194,7 @@
    padding: anything past the transcript's edge would scroll it sideways.
    Wider screens hit the column's cap first. */
 @media (pointer: fine) {
-  .nx-msg { --nx-time-room: calc(var(--nx-stamp-gap) + var(--nx-stamp-max) + var(--nx-copy-step)); }
+  .nx-msg { --nx-time-extra: var(--nx-copy-step); }
 }
 .nx-chat .nx-msg:not([data-mine]) > .nx-msg__col { max-width: min(var(--nx-col-cap), calc(100% - var(--nx-gutter-room) - var(--nx-time-room))); }
 .nx-msg__name {
@@ -204,7 +204,6 @@
   padding-left: 12px;
   font-size: var(--text-caption);
   font-weight: 500;
-  line-height: var(--nx-name-line);
   color: var(--muted-foreground);
 }
 /* Message times (MessageList TimeStamp). Every message has one; `data-shown`
@@ -276,15 +275,13 @@
   .nx-msg__row:is(:hover, :focus-within) > .nx-copy,
   .nx-copy[data-done] { opacity: 1; }
   .nx-copy:hover { background: var(--accent); color: var(--foreground); }
-  .nx-msg__row:is(:hover, :focus-within, :has(> .nx-copy[data-done])):has(> .nx-copy) > .nx-stamp { translate: var(--nx-copy-step) 0; }
-  .nx-msg[data-mine] .nx-msg__row:is(:hover, :focus-within, :has(> .nx-copy[data-done])):has(> .nx-copy) > .nx-stamp { translate: calc(-1 * var(--nx-copy-step)) 0; }
+  .nx-msg__row:is(:hover, :focus-within, :has(> .nx-copy[data-done])):has(> .nx-copy) > .nx-stamp { translate: calc(var(--nx-stamp-dir) * var(--nx-copy-step)) 0; }
 }
 /* A fine pointer that cannot hover (a stylus) would never reveal it, and its
    menu has no Copy, so the button stays shown there. */
 @media (hover: none) and (pointer: fine) {
   .nx-copy { opacity: 1; }
-  .nx-msg__row:has(> .nx-copy) > .nx-stamp { translate: var(--nx-copy-step) 0; }
-  .nx-msg[data-mine] .nx-msg__row:has(> .nx-copy) > .nx-stamp { translate: calc(-1 * var(--nx-copy-step)) 0; }
+  .nx-msg__row:has(> .nx-copy) > .nx-stamp { translate: calc(var(--nx-stamp-dir) * var(--nx-copy-step)) 0; }
 }
 @media (pointer: coarse) {
   .nx-copy { display: none; }
@@ -370,11 +367,12 @@
 /* Hover toolbar; on touch the same actions live in the long-press sheet.
    It floats over the bubble's top corner so it never takes width from the
    bubble (in-flow, even invisible, it crushed bubbles on narrow windows). It
-   takes the bubble's outer corner, the left of someone else's and the right of
-   mine, where the bubble meets the transcript's edge in a 1:1 room or on a
-   phone, and grows from there over the bubble: it stays inside the message's
-   16px side padding however short the bubble is. Even hidden, anything past
-   the transcript's edge gives it a horizontal scrollbar, which comes and goes
+   takes the bubble's outer corner, the one toward the transcript's nearer
+   edge (the left of someone else's bubble, the right of mine), and grows from
+   there over the bubble, so it stays inside the message's 16px side padding
+   however short the bubble is, even where the bubble starts at that padding
+   (mine, and someone else's in a 1:1 room). Even hidden, anything past the
+   transcript's edge gives it a horizontal scrollbar, which comes and goes
    with the rows mounted during a scroll and resizes the list. */
 .nx-msg__tools {
   position: absolute;
@@ -394,10 +392,11 @@
   transition: opacity var(--duration-quick), transform var(--duration-quick) var(--ease-smooth-out);
 }
 .nx-msg:not([data-mine]) .nx-msg__tools { right: auto; left: -8px; }
-/* A turn's first message has the sender's name line right above the bubble,
-   under the toolbar's corner, so there the toolbar rises above that line (its
-   own 32px: 28px buttons and 2px padding) into the gap before the turn. */
-.nx-msg__col:has(> .nx-msg__name) > .nx-msg__row > .nx-msg__tools { top: calc(-1 * (var(--nx-name-line) + var(--nx-col-gap) + 32px)); }
+/* Above someone else's bubble that opens a turn sit its sender's name line
+   and maybe a Re: line, so there the toolbar drops inside the bubble's top
+   corner: it covers neither, stays in the row's hover area on the way to it,
+   and keeps clear of the thread panel's top edge. */
+.nx-msg__col:has(> .nx-msg__name) > .nx-msg__row > .nx-msg__tools { top: 4px; }
 @media (hover: hover) and (pointer: fine) {
   .nx-msg__row:hover .nx-msg__tools,
   .nx-msg__row:focus-within .nx-msg__tools { opacity: 1; pointer-events: auto; transform: none; }
