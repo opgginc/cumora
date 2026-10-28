@@ -142,10 +142,10 @@
 .nx-msg[data-pos="single"],
 .nx-msg[data-pos="first"] { padding-top: 8px; }
 .nx-msg[data-mine] { flex-direction: row-reverse; }
-/* Avatar column: a turn's avatar sits at its top beside the name row, and the
-   turn's later messages show their time in it, so it fits "12:59 PM". The
-   avatar hugs the column's right edge so it stays next to the name and bubble. */
-.nx-msg__gutter { flex: none; align-self: flex-start; width: 56px; display: flex; justify-content: flex-end; }
+/* Avatar column: a turn's avatar sits at its top beside the name row. It is as
+   wide as the avatar, which then starts at the row's padding and sits 8px from
+   the name and the bubble. */
+.nx-msg__gutter { flex: none; align-self: flex-start; width: 28px; display: flex; }
 /* An agent's avatar and name open the agent menu (src/next/agentMenu.tsx). */
 .nx-msg__face { display: inline-flex; border-radius: 999px; }
 @media (hover: hover) {
@@ -166,6 +166,15 @@
   gap: 4px;
 }
 .nx-msg[data-mine] .nx-msg__col { align-items: flex-end; }
+/* Someone else's later times sit right of the bubble, so on a narrow screen a
+   bubble beside the avatar column (28px and its 8px gap) leaves room for the
+   widest one ("오전 12:00", 59px) after its 6px gap. A mouse also shows the copy
+   button there, and the time steps 32px aside for it into the row's 16px
+   padding. Wider screens hit the 78% and 560px caps first. */
+.nx-chat:not([data-direct]) .nx-msg:not([data-mine]) > .nx-msg__col { max-width: min(78%, 560px, calc(100% - 101px)); }
+@media (pointer: fine) {
+  .nx-chat:not([data-direct]) .nx-msg:not([data-mine]) > .nx-msg__col { max-width: min(78%, 560px, calc(100% - 117px)); }
+}
 .nx-msg__name {
   display: flex;
   align-items: baseline;
@@ -203,12 +212,9 @@
 .nx-stamp::before { content: ""; position: absolute; inset: -16px -4px; }
 .nx-msg__name > .nx-stamp::before { inset: -16px -4px -6px; }
 /* Lined up with the first line of the bubble: 8px padding + half of its 21px line.
-   Someone else's time sits in the avatar column and mine left of my bubble. A
-   1:1 room has no avatar column, so there the other person's time sits right
-   of the bubble instead. */
-.nx-msg__row > .nx-stamp { position: absolute; top: 13px; right: calc(100% + 8px); }
-.nx-msg[data-mine] .nx-msg__row > .nx-stamp { right: calc(100% + 6px); }
-.nx-chat[data-direct] .nx-msg:not([data-mine]) .nx-msg__row > .nx-stamp { right: auto; left: calc(100% + 6px); }
+   A time sits on the bubble's free side: right of someone else's, left of mine. */
+.nx-msg__row > .nx-stamp { position: absolute; top: 13px; left: calc(100% + 6px); }
+.nx-msg[data-mine] .nx-msg__row > .nx-stamp { left: auto; right: calc(100% + 6px); }
 .nx-msg__row {
   position: relative;
   display: flex;
@@ -240,22 +246,22 @@
 .nx-msg[data-mine] .nx-copy { left: auto; right: calc(100% + 4px); }
 .nx-copy svg { width: 16px; height: 16px; }
 .nx-copy[data-done="failed"] { color: var(--destructive); }
-/* A time on the same side (my bubble, the other side's in a 1:1 room) steps
-   out by the button's width whenever the button shows, so a one-line bubble's
-   time and button never overlap. */
+/* The time shares the free side with the button, so it steps out by the
+   button's width whenever the button shows, and a one-line bubble's time and
+   button never overlap. */
 @media (hover: hover) and (pointer: fine) {
   .nx-msg__row:is(:hover, :focus-within) > .nx-copy,
   .nx-copy[data-done] { opacity: 1; }
   .nx-copy:hover { background: var(--accent); color: var(--foreground); }
+  .nx-msg__row:is(:hover, :focus-within, :has(> .nx-copy[data-done])):has(> .nx-copy) > .nx-stamp { translate: 32px 0; }
   .nx-msg[data-mine] .nx-msg__row:is(:hover, :focus-within, :has(> .nx-copy[data-done])):has(> .nx-copy) > .nx-stamp { translate: -32px 0; }
-  .nx-chat[data-direct] .nx-msg:not([data-mine]) .nx-msg__row:is(:hover, :focus-within, :has(> .nx-copy[data-done])):has(> .nx-copy) > .nx-stamp { translate: 32px 0; }
 }
 /* A fine pointer that cannot hover (a stylus) would never reveal it, and its
    menu has no Copy, so the button stays shown there. */
 @media (hover: none) and (pointer: fine) {
   .nx-copy { opacity: 1; }
+  .nx-msg__row:has(> .nx-copy) > .nx-stamp { translate: 32px 0; }
   .nx-msg[data-mine] .nx-msg__row:has(> .nx-copy) > .nx-stamp { translate: -32px 0; }
-  .nx-chat[data-direct] .nx-msg:not([data-mine]) .nx-msg__row:has(> .nx-copy) > .nx-stamp { translate: 32px 0; }
 }
 @media (pointer: coarse) {
   .nx-copy { display: none; }

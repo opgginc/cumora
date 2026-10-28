@@ -364,8 +364,7 @@ export const Bubble = memo(function Bubble({ msg, author, mine, pos, stamp, fres
   const hasText = msg.body.trim().length > 0 && msg.kind !== 'poll'
   // A turn opens with the avatar and a name row carrying the time. Later
   // messages, and all of mine, keep their time beside the bubble, where CSS
-  // places it: the avatar column, left of my bubble, or right of the bubble
-  // in a 1:1 room, which has no avatar column.
+  // places it: right of someone else's bubble, left of mine.
   const turn = stamp === 'turn'
   const time = <TimeStamp at={at} shown={stamp !== 'hidden'} locale={locale} />
   const quote = msg.quoted
