@@ -130,10 +130,26 @@
 /* One message row. Spacing between groups is larger than inside a group, so
    proximity alone tells consecutive bubbles apart from a new speaker. */
 .nx-msg {
+  /* Measurements the rules below add up, each set once: the avatar column and
+     the gap after it, the gap between a bubble and its time, the widest time
+     ("오전 12:00" is 59px in 11px mono), and the copy button with the gap before
+     it, the step a time takes aside for the button. */
+  --nx-gutter: 28px;
+  --nx-msg-gap: 8px;
+  --nx-stamp-gap: 6px;
+  --nx-stamp-max: 59px;
+  --nx-copy: 28px;
+  --nx-copy-gap: 4px;
+  --nx-copy-step: calc(var(--nx-copy) + var(--nx-copy-gap));
+  /* What someone else's bubble leaves free beside it (see .nx-msg__col): the
+     avatar column, and right of the bubble its time, which with a mouse also
+     steps aside for the copy button. */
+  --nx-gutter-room: calc(var(--nx-gutter) + var(--nx-msg-gap));
+  --nx-time-room: calc(var(--nx-stamp-gap) + var(--nx-stamp-max));
   position: relative;
   display: flex;
   align-items: flex-end;
-  gap: 8px;
+  gap: var(--nx-msg-gap);
   padding: 1px 16px;
   max-width: 820px;
   margin: 0 auto;
@@ -145,7 +161,7 @@
 /* Avatar column: a turn's avatar sits at its top beside the name row. It is as
    wide as the avatar, which then starts at the row's padding and sits 8px from
    the name and the bubble. */
-.nx-msg__gutter { flex: none; align-self: flex-start; width: 28px; display: flex; }
+.nx-msg__gutter { flex: none; align-self: flex-start; width: var(--nx-gutter); display: flex; }
 /* An agent's avatar and name open the agent menu (src/next/agentMenu.tsx). */
 .nx-msg__face { display: inline-flex; border-radius: 999px; }
 @media (hover: hover) {
@@ -157,9 +173,11 @@
    keep it: there the avatar tells speakers apart. */
 .nx-chat[data-direct] .nx-msg__gutter,
 .nx-thread__list[data-direct] .nx-msg__gutter { display: none; }
+.nx-chat[data-direct] .nx-msg { --nx-gutter-room: 0px; }
 .nx-msg__col {
+  --nx-col-cap: min(78%, 560px);
   min-width: 0;
-  max-width: min(78%, 560px);
+  max-width: var(--nx-col-cap);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -167,18 +185,14 @@
 }
 .nx-msg[data-mine] .nx-msg__col { align-items: flex-end; }
 /* Someone else's later times sit right of the bubble, so on a narrow screen a
-   bubble leaves room there for the widest one ("오전 12:00", 59px) after its 6px
-   gap, and with a mouse for the 32px it steps aside for the copy button. The
-   time then ends inside the row, and its 4px tap target inside the row's 16px
+   bubble leaves room for the avatar column and for its time there. The time
+   then ends inside the row, and its 4px tap target inside the row's 16px
    padding: anything past the transcript's edge would scroll it sideways.
-   Beside the avatar column a bubble also gives up the column's 28px and its 8px
-   gap. Wider screens hit the 78% and 560px caps first. */
-.nx-chat { --nx-time-room: 65px; }
+   Wider screens hit the column's cap first. */
 @media (pointer: fine) {
-  .nx-chat { --nx-time-room: 97px; }
+  .nx-msg { --nx-time-room: calc(var(--nx-stamp-gap) + var(--nx-stamp-max) + var(--nx-copy-step)); }
 }
-.nx-chat .nx-msg:not([data-mine]) > .nx-msg__col { max-width: min(78%, 560px, calc(100% - var(--nx-time-room))); }
-.nx-chat:not([data-direct]) .nx-msg:not([data-mine]) > .nx-msg__col { max-width: min(78%, 560px, calc(100% - 36px - var(--nx-time-room))); }
+.nx-chat .nx-msg:not([data-mine]) > .nx-msg__col { max-width: min(var(--nx-col-cap), calc(100% - var(--nx-gutter-room) - var(--nx-time-room))); }
 .nx-msg__name {
   display: flex;
   align-items: baseline;
@@ -217,8 +231,8 @@
 .nx-msg__name > .nx-stamp::before { inset: -16px -4px -6px; }
 /* Lined up with the first line of the bubble: 8px padding + half of its 21px line.
    A time sits on the bubble's free side: right of someone else's, left of mine. */
-.nx-msg__row > .nx-stamp { position: absolute; top: 13px; left: calc(100% + 6px); }
-.nx-msg[data-mine] .nx-msg__row > .nx-stamp { left: auto; right: calc(100% + 6px); }
+.nx-msg__row > .nx-stamp { position: absolute; top: 13px; left: calc(100% + var(--nx-stamp-gap)); }
+.nx-msg[data-mine] .nx-msg__row > .nx-stamp { left: auto; right: calc(100% + var(--nx-stamp-gap)); }
 .nx-msg__row {
   position: relative;
   display: flex;
@@ -234,11 +248,11 @@
 .nx-copy {
   position: absolute;
   bottom: 0;
-  left: calc(100% + 4px);
+  left: calc(100% + var(--nx-copy-gap));
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: var(--nx-copy);
+  height: var(--nx-copy);
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -247,7 +261,7 @@
   opacity: 0;
   transition: opacity var(--duration-quick), color var(--duration-quick), background-color var(--duration-quick);
 }
-.nx-msg[data-mine] .nx-copy { left: auto; right: calc(100% + 4px); }
+.nx-msg[data-mine] .nx-copy { left: auto; right: calc(100% + var(--nx-copy-gap)); }
 .nx-copy svg { width: 16px; height: 16px; }
 .nx-copy[data-done="failed"] { color: var(--destructive); }
 /* The time shares the free side with the button, so it steps out by the
@@ -257,15 +271,15 @@
   .nx-msg__row:is(:hover, :focus-within) > .nx-copy,
   .nx-copy[data-done] { opacity: 1; }
   .nx-copy:hover { background: var(--accent); color: var(--foreground); }
-  .nx-msg__row:is(:hover, :focus-within, :has(> .nx-copy[data-done])):has(> .nx-copy) > .nx-stamp { translate: 32px 0; }
-  .nx-msg[data-mine] .nx-msg__row:is(:hover, :focus-within, :has(> .nx-copy[data-done])):has(> .nx-copy) > .nx-stamp { translate: -32px 0; }
+  .nx-msg__row:is(:hover, :focus-within, :has(> .nx-copy[data-done])):has(> .nx-copy) > .nx-stamp { translate: var(--nx-copy-step) 0; }
+  .nx-msg[data-mine] .nx-msg__row:is(:hover, :focus-within, :has(> .nx-copy[data-done])):has(> .nx-copy) > .nx-stamp { translate: calc(-1 * var(--nx-copy-step)) 0; }
 }
 /* A fine pointer that cannot hover (a stylus) would never reveal it, and its
    menu has no Copy, so the button stays shown there. */
 @media (hover: none) and (pointer: fine) {
   .nx-copy { opacity: 1; }
-  .nx-msg__row:has(> .nx-copy) > .nx-stamp { translate: 32px 0; }
-  .nx-msg[data-mine] .nx-msg__row:has(> .nx-copy) > .nx-stamp { translate: -32px 0; }
+  .nx-msg__row:has(> .nx-copy) > .nx-stamp { translate: var(--nx-copy-step) 0; }
+  .nx-msg[data-mine] .nx-msg__row:has(> .nx-copy) > .nx-stamp { translate: calc(-1 * var(--nx-copy-step)) 0; }
 }
 @media (pointer: coarse) {
   .nx-copy { display: none; }
@@ -813,10 +827,12 @@
 .nx-work__what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-work__count { font-size: var(--text-micro); }
 
-/* Attachments */
+/* Attachments. Never wider than the bubble: beside the avatar column and its
+   time, a narrow screen caps the bubble under these widths. */
 .nx-att-img {
   display: block;
   width: min(320px, 64vw);
+  max-width: 100%;
   aspect-ratio: 4 / 3;
   margin-top: 4px;
   padding: 0;
@@ -835,6 +851,7 @@
   align-items: center;
   gap: 8px;
   width: min(300px, 64vw);
+  max-width: 100%;
   margin-top: 4px;
   padding: 8px;
   border-radius: var(--radius);
