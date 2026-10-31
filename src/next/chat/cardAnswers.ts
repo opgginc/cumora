@@ -7,7 +7,7 @@
  */
 import type { Message } from '@/types'
 import type { Card } from './cards'
-import { createdAt, TALK_KINDS } from './model'
+import { buildItems, createdAt, TALK_KINDS, type Item } from './model'
 
 /** A room's answer replies, by their id and their client id: the kind of card
  *  each answered and that card's question message. */
@@ -33,6 +33,14 @@ export function roomAnswers(cards: Iterable<Card>, room: string, prev: Answers =
  *  is known before the reply is posted, so it is found from its first frame. */
 export function answerKind(answers: Answers, m: { id: string; clientId?: string }): Card['kind'] | undefined {
   return (answers.get(m.id) ?? (m.clientId === undefined ? undefined : answers.get(m.clientId)))?.kind
+}
+
+/** The rows the transcript draws (buildItems). The reply that answered a
+ *  question is a note; a secret's reply only says that it was sent, which its
+ *  card already shows, so it is left out. */
+export function transcriptItems(messages: Message[], me: string | null, answers: Answers): Item[] {
+  const shown = answers.size === 0 ? messages : messages.filter((m) => answerKind(answers, m) !== 'secret')
+  return buildItems(shown, me, (m) => answerKind(answers, m) === 'choice')
 }
 
 /** The question card a quote is about: the question itself, or the reply that answered it. */

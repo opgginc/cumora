@@ -33,9 +33,9 @@ import { agentRef } from '../agentRefs'
 import { Avatar } from '../ui/Avatar'
 import { IconButton, INERT, Menu, Spinner, useCoarse, useMenu, type MenuEntry } from '../ui/primitives'
 import { IArrowDown, IArrowUp, ICheck, ICopy, IDownload, IFile, IMore, IReply, ISpark, IThread, IWhisper } from '../ui/icons'
-import { buildItems, createdAt, floatingDay, loadOlderUntilShown, type DayPill, type Item, type Pos, type Stamp } from './model'
+import { createdAt, floatingDay, loadOlderUntilShown, type DayPill, type Item, type Pos, type Stamp } from './model'
 import { authorOf } from './deletedAuthor'
-import { answerKind, roomTalk } from './cardAnswers'
+import { NO_ANSWERS, roomTalk, transcriptItems } from './cardAnswers'
 import { useCardAnswers, useCards, useQuestionOf, useWaitingCard } from './cards'
 import { AskCard } from './AskCard'
 import { openFigures, useRoomTokens, useTokens } from './tokens'
@@ -766,19 +766,13 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
   const ref = useRef<VirtuosoHandle>(null)
   const [atBottom, setAtBottom] = useState(true)
   // The transcript waits for the room's cards on its first load (see the
-  // skeleton below). The reply that answered a question shows as a note
-  // (AnswerLine); a secret's reply only says that it was sent, which its
-  // card already shows, so it is left out.
+  // skeleton below): they decide how replies to them are drawn.
   const cardsReady = useCards((s) => s.ready[convoId] === true)
   useEffect(() => {
     if (!useCards.getState().loaded[convoId]) void useCards.getState().load(convoId)
   }, [convoId])
   const answers = useCardAnswers(convoId)
-  const shown = useMemo(
-    () => (answers.size === 0 ? raw : raw.filter((m) => answerKind(answers, m) !== 'secret')),
-    [raw, answers],
-  )
-  const items = useMemo(() => buildItems(shown, me, (m) => answerKind(answers, m) === 'choice'), [shown, me, answers])
+  const items = useMemo(() => transcriptItems(raw, me, answers), [raw, me, answers])
   useRoomTokens(convoId, items)
 
   // Messages present at open never animate; anything after does, once.
@@ -836,19 +830,33 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     requestAnimationFrame(recheckAway)
   }, [float, recheckAway])
 
+  // The list is keyed by room, so it unmounts when the room is left and its
+  // paging stops. Set on every mount: StrictMode mounts twice.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
   const showOlder = useCallback(() => loadOlderUntilShown(
     () => useMessages.getState().loadOlder(convoId),
     () => useMessages.getState().byConvo[convoId] ?? EMPTY,
-  ), [convoId])
-  const onStartReached = useCallback(() => {
-    if (hasMore && !loadingOlder) void showOlder()
-  }, [showOlder, hasMore, loadingOlder])
+    (older) => transcriptItems(older, me, useCards.getState().answers[convoId] ?? NO_ANSWERS).length > 0,
+    () => mounted.current,
+  ), [convoId, me])
+  const onStartReached = useCallback(() => { void showOlder() }, [showOlder])
   // Virtuoso asks for older rows only from a row it shows. A room whose newest
-  // page is all Calendar firings pages back to its newest row behind the skeleton.
+  // page is all Calendar firings pages back to its newest row behind the
+  // skeleton, and offers a retry when a page fails on the way.
   const empty = items.length === 0
+  const [olderFailed, setOlderFailed] = useState(false)
   useEffect(() => {
-    if (loaded && empty && hasMore) void showOlder()
-  }, [showOlder, loaded, empty, hasMore])
+    if (!loaded || !empty || !hasMore || olderFailed) return
+    void showOlder().then((drawn) => {
+      // No row while more is left and nothing else is loading: a page failed.
+      const s = useMessages.getState()
+      if (!drawn && mounted.current && s.hasMoreOlder[convoId] && !s.loadingOlder.has(convoId)) setOlderFailed(true)
+    })
+  }, [showOlder, loaded, empty, hasMore, olderFailed, convoId])
 
   // Streaming bubbles grow the footer, which Virtuoso's followOutput
   // does not watch; keep the bottom pinned ourselves while the user is there.
@@ -961,8 +969,10 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
   }, [byId, locale, nt, seen, currentHit, hitSet, float, coarse])
 
   if (empty) {
-    if (error) return <div className="nx-center"><div className="nx-empty"><b>{nt('msg.loadFailed')}</b><button type="button" className="nx-btn nx-btn--outline" onClick={() => void useMessages.getState().retryLoad(convoId)}>{nt('msg.retry')}</button></div></div>
-    if (!loaded || loadingOlder) return <TranscriptSkeleton />
+    const retry = error ? () => void useMessages.getState().retryLoad(convoId) : olderFailed ? () => setOlderFailed(false) : null
+    if (retry) return <div className="nx-center"><div className="nx-empty"><b>{nt('msg.loadFailed')}</b><button type="button" className="nx-btn nx-btn--outline" onClick={retry}>{nt('msg.retry')}</button></div></div>
+    // With more history left, the effect above is paging back to a row to draw.
+    if (!loaded || hasMore) return <TranscriptSkeleton />
   }
   if (!cardsReady) return <TranscriptSkeleton />
 

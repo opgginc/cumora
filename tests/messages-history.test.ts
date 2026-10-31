@@ -6,7 +6,8 @@ import ts from 'typescript'
 import { create } from 'zustand'
 import type { ApiMessage } from '../src/api/client'
 import { applyReplyCountDelta } from '../src/lib/replyCount'
-import { buildItems, loadOlderUntilShown } from '../src/next/chat/model'
+import { NO_ANSWERS, transcriptItems, type Answers } from '../src/next/chat/cardAnswers'
+import { loadOlderUntilShown } from '../src/next/chat/model'
 import type { Message } from '../src/types'
 
 // Execute the actual store with an in-memory API, without loading the browser
@@ -188,9 +189,14 @@ describe('older pages the redesigned transcript does not draw', () => {
   /** Calendar firings, which buildItems leaves out of the transcript. */
   const firings = (first: number, last: number): ApiMessage[] =>
     messages(first, last).map((m) => ({ ...m, authorId: 'calendar', kind: 'system' }))
-  const drawn = (store: ReturnType<typeof setup>['store']) => buildItems(store.getState().byConvo.chat, 'user', () => false).length
-  const showOlder = (store: ReturnType<typeof setup>['store']) =>
-    loadOlderUntilShown(() => store.getState().loadOlder('chat'), () => store.getState().byConvo.chat)
+  type Store = ReturnType<typeof setup>['store']
+  const drawn = (store: Store, answers: Answers = NO_ANSWERS) => transcriptItems(store.getState().byConvo.chat, 'user', answers).length
+  const showOlder = (store: Store, answers: Answers = NO_ANSWERS, alive = () => true) => loadOlderUntilShown(
+    () => store.getState().loadOlder('chat'),
+    () => store.getState().byConvo.chat,
+    (older) => transcriptItems(older, 'user', answers).length > 0,
+    alive,
+  )
 
   it('pages past a run of firings to the newest row it draws', async () => {
     // A routine room whose agent last spoke 290 firings ago: its newest page draws nothing.
@@ -198,16 +204,33 @@ describe('older pages the redesigned transcript does not draw', () => {
     await store.getState().loadConversation('chat')
     assert.equal(drawn(store), 0)
 
-    await showOlder(store)
+    assert.equal(await showOlder(store), true)
     assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
     assert.equal(drawn(store), 10)
+  })
+
+  it('pages past a secret reply among firings, which the transcript leaves out too', async () => {
+    const answers: Answers = new Map([['m-200', { kind: 'secret', question: 'm-q' }]])
+    const { store, requests } = setup(300, [], [...messages(1, 10), ...firings(11, 199), ...messages(200, 200), ...firings(201, 300)])
+    await store.getState().loadConversation('chat')
+
+    assert.equal(await showOlder(store, answers), true)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+    assert.equal(drawn(store, answers), 10)
   })
 
   it('stops where the history starts', async () => {
     const { store, requests } = setup(200, [], firings(1, 200))
     await store.getState().loadConversation('chat')
-    await showOlder(store)
+    assert.equal(await showOlder(store), false)
     assert.deepEqual(requests.map((r) => r.before), [undefined, 121, 41])
+  })
+
+  it('stops once the room is left', async () => {
+    const { store, requests } = setup(300, [], firings(1, 300))
+    await store.getState().loadConversation('chat')
+    assert.equal(await showOlder(store, NO_ANSWERS, () => requests.length < 2), false)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221])
   })
 
   it('stops after a failed page instead of asking again and again', async () => {
@@ -217,7 +240,7 @@ describe('older pages the redesigned transcript does not draw', () => {
       requests.push(options)
       throw new Error('offline')
     }
-    await showOlder(store)
+    assert.equal(await showOlder(store), false)
     assert.deepEqual(requests.map((r) => r.before), [undefined, 221])
   })
 })
