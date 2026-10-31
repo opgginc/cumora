@@ -107,6 +107,25 @@ export function buildItems(messages: Message[], meId: string | null, isAnswer: (
   return out
 }
 
+/**
+ * Loads older pages until one brings a row the transcript draws. buildItems
+ * leaves Calendar firings out, so a page of them adds no row, and Virtuoso asks
+ * for older rows again only when its first row changes: a routine that fires
+ * more often than its agent talks would end the history at that page, or leave
+ * the room blank when its newest page is all firings. `rows` reads the room's
+ * messages, oldest first. Stops once no older row came: the history ended, the
+ * request failed, or another load was already running.
+ */
+export async function loadOlderUntilShown(loadOlder: () => Promise<void>, rows: () => Message[]): Promise<void> {
+  for (;;) {
+    const top = rows()[0]?.id
+    await loadOlder()
+    const now = rows()
+    const older = now.slice(0, Math.max(0, now.findIndex((m) => m.id === top)))
+    if (older.length === 0 || buildItems(older, null, () => false).length > 0) return
+  }
+}
+
 /** A mounted day chip's pill, as the floating day under the header sees it. Days
  *  are local midnights in ms; `prev` is the day of the row before the chip (null
  *  for the first row). `passed`: the pill's top is above the floating pill's

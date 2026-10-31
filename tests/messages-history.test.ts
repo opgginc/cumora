@@ -6,6 +6,7 @@ import ts from 'typescript'
 import { create } from 'zustand'
 import type { ApiMessage } from '../src/api/client'
 import { applyReplyCountDelta } from '../src/lib/replyCount'
+import { buildItems, loadOlderUntilShown } from '../src/next/chat/model'
 import type { Message } from '../src/types'
 
 // Execute the actual store with an in-memory API, without loading the browser
@@ -26,9 +27,8 @@ function messages(first: number, last: number): ApiMessage[] {
   })
 }
 
-function setup(last: number, cache: Message[] = messages(1, 80)) {
+function setup(last: number, cache: Message[] = messages(1, 80), serverMessages = messages(1, last)) {
   const requests: { before?: number; limit?: number }[] = []
-  const serverMessages = messages(1, last)
   const api = {
     async getMessages(_id: string, options: { before?: number; limit?: number }) {
       requests.push(options)
@@ -181,5 +181,43 @@ describe('message history after reconnect', () => {
     assert.deepEqual(sequences(), messages(1, 280).map((m) => m.sequence))
     assert.equal(requests.at(-1)?.before, 81)
     assert.equal(store.getState().firstItemIndex.chat, anchor - 80)
+  })
+})
+
+describe('older pages the redesigned transcript does not draw', () => {
+  /** Calendar firings, which buildItems leaves out of the transcript. */
+  const firings = (first: number, last: number): ApiMessage[] =>
+    messages(first, last).map((m) => ({ ...m, authorId: 'calendar', kind: 'system' }))
+  const drawn = (store: ReturnType<typeof setup>['store']) => buildItems(store.getState().byConvo.chat, 'user', () => false).length
+  const showOlder = (store: ReturnType<typeof setup>['store']) =>
+    loadOlderUntilShown(() => store.getState().loadOlder('chat'), () => store.getState().byConvo.chat)
+
+  it('pages past a run of firings to the newest row it draws', async () => {
+    // A routine room whose agent last spoke 290 firings ago: its newest page draws nothing.
+    const { store, requests } = setup(300, [], [...messages(1, 10), ...firings(11, 300)])
+    await store.getState().loadConversation('chat')
+    assert.equal(drawn(store), 0)
+
+    await showOlder(store)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+    assert.equal(drawn(store), 10)
+  })
+
+  it('stops where the history starts', async () => {
+    const { store, requests } = setup(200, [], firings(1, 200))
+    await store.getState().loadConversation('chat')
+    await showOlder(store)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 121, 41])
+  })
+
+  it('stops after a failed page instead of asking again and again', async () => {
+    const { store, api, requests } = setup(300, [], firings(1, 300))
+    await store.getState().loadConversation('chat')
+    api.getMessages = async (_id, options) => {
+      requests.push(options)
+      throw new Error('offline')
+    }
+    await showOlder(store)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221])
   })
 })

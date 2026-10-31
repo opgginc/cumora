@@ -33,7 +33,7 @@ import { agentRef } from '../agentRefs'
 import { Avatar } from '../ui/Avatar'
 import { IconButton, INERT, Menu, Spinner, useCoarse, useMenu, type MenuEntry } from '../ui/primitives'
 import { IArrowDown, IArrowUp, ICheck, ICopy, IDownload, IFile, IMore, IReply, ISpark, IThread, IWhisper } from '../ui/icons'
-import { buildItems, createdAt, floatingDay, type DayPill, type Item, type Pos, type Stamp } from './model'
+import { buildItems, createdAt, floatingDay, loadOlderUntilShown, type DayPill, type Item, type Pos, type Stamp } from './model'
 import { authorOf } from './deletedAuthor'
 import { answerKind, roomTalk } from './cardAnswers'
 import { useCardAnswers, useCards, useQuestionOf, useWaitingCard } from './cards'
@@ -836,9 +836,19 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     requestAnimationFrame(recheckAway)
   }, [float, recheckAway])
 
+  const showOlder = useCallback(() => loadOlderUntilShown(
+    () => useMessages.getState().loadOlder(convoId),
+    () => useMessages.getState().byConvo[convoId] ?? EMPTY,
+  ), [convoId])
   const onStartReached = useCallback(() => {
-    if (hasMore && !loadingOlder) void useMessages.getState().loadOlder(convoId)
-  }, [convoId, hasMore, loadingOlder])
+    if (hasMore && !loadingOlder) void showOlder()
+  }, [showOlder, hasMore, loadingOlder])
+  // Virtuoso asks for older rows only from a row it shows. A room whose newest
+  // page is all Calendar firings pages back to its newest row behind the skeleton.
+  const empty = items.length === 0
+  useEffect(() => {
+    if (loaded && empty && hasMore) void showOlder()
+  }, [showOlder, loaded, empty, hasMore])
 
   // Streaming bubbles grow the footer, which Virtuoso's followOutput
   // does not watch; keep the bottom pinned ourselves while the user is there.
@@ -950,9 +960,9 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     )
   }, [byId, locale, nt, seen, currentHit, hitSet, float, coarse])
 
-  if (items.length === 0) {
+  if (empty) {
     if (error) return <div className="nx-center"><div className="nx-empty"><b>{nt('msg.loadFailed')}</b><button type="button" className="nx-btn nx-btn--outline" onClick={() => void useMessages.getState().retryLoad(convoId)}>{nt('msg.retry')}</button></div></div>
-    if (!loaded) return <TranscriptSkeleton />
+    if (!loaded || loadingOlder) return <TranscriptSkeleton />
   }
   if (!cardsReady) return <TranscriptSkeleton />
 
