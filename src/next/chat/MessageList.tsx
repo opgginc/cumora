@@ -837,12 +837,15 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
-  const showOlder = useCallback(() => loadOlderUntilShown(
-    () => useMessages.getState().loadOlder(convoId),
-    () => useMessages.getState().byConvo[convoId] ?? EMPTY,
-    (older) => transcriptItems(older, me, useCards.getState().answers[convoId] ?? NO_ANSWERS).length > 0,
-    () => mounted.current,
-  ), [convoId, me])
+  const showOlder = useCallback(() => {
+    const rows = () => useMessages.getState().byConvo[convoId] ?? EMPTY
+    return loadOlderUntilShown(
+      () => useMessages.getState().loadOlder(convoId),
+      rows,
+      () => transcriptItems(rows(), me, useCards.getState().answers[convoId] ?? NO_ANSWERS).map((it) => it.key),
+      () => mounted.current,
+    )
+  }, [convoId, me])
   const onStartReached = useCallback(() => { void showOlder() }, [showOlder])
   // Virtuoso asks for older rows only from a row it shows. A room whose newest
   // page is all Calendar firings pages back to its newest row behind the
@@ -1008,7 +1011,7 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
         defaultItemHeight={64}
         computeItemKey={(_, it) => it.key}
         itemContent={renderItem}
-        context={{ convoId, bottomInset, onLiveChange, loadingOlder, hasMore, empty: items.length === 0, beginning: nt('msg.beginning'), floatRef: float.bind }}
+        context={{ convoId, bottomInset, onLiveChange, loadingOlder, hasMore, empty, beginning: nt('msg.beginning'), floatRef: float.bind }}
         components={LIST_COMPONENTS}
       />
       <button

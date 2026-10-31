@@ -194,7 +194,7 @@ describe('older pages the redesigned transcript does not draw', () => {
   const showOlder = (store: Store, answers: Answers = NO_ANSWERS, alive = () => true) => loadOlderUntilShown(
     () => store.getState().loadOlder('chat'),
     () => store.getState().byConvo.chat,
-    (older) => transcriptItems(older, 'user', answers).length > 0,
+    () => transcriptItems(store.getState().byConvo.chat, 'user', answers).map((it) => it.key),
     alive,
   )
 
@@ -242,5 +242,45 @@ describe('older pages the redesigned transcript does not draw', () => {
     }
     assert.equal(await showOlder(store), false)
     assert.deepEqual(requests.map((r) => r.before), [undefined, 221])
+  })
+
+  it('pages past tool rows that only join the work chip on top', async () => {
+    // An agent's long tool run: each older page adds rows to the first chip, not a row above it.
+    const tools = messages(61, 300).map((m) => ({ ...m, authorId: 'bot', kind: 'tool' as const }))
+    const { store, requests } = setup(300, [], [...messages(1, 60), ...tools])
+    await store.getState().loadConversation('chat')
+    assert.equal(drawn(store), 1)
+
+    assert.equal(await showOlder(store), true)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+    assert.equal(drawn(store), 61)
+  })
+
+  it('keeps paging when a row arrives at the bottom meanwhile', async () => {
+    const { store, api, requests } = setup(300, [], [...messages(1, 10), ...firings(11, 299), ...messages(300, 300)])
+    await store.getState().loadConversation('chat')
+    const getMessages = api.getMessages
+    api.getMessages = async (id, options) => {
+      const page = await getMessages(id, options)
+      if (options.before === 221) store.getState().applyEvent({ type: 'message.new', conversationId: 'chat', message: messages(301, 301)[0] })
+      return page
+    }
+
+    assert.equal(await showOlder(store), true)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+  })
+
+  it('stops at once while another load is running', async () => {
+    const { store, api, requests } = setup(300, [], firings(1, 300))
+    await store.getState().loadConversation('chat')
+    const getMessages = api.getMessages
+    let release!: () => void
+    api.getMessages = (id, options) => new Promise((resolve) => { release = () => resolve(getMessages(id, options)) })
+    const running = store.getState().loadOlder('chat')
+
+    assert.equal(await showOlder(store), false)
+    assert.equal(requests.length, 1)
+    release()
+    await running
   })
 })

@@ -108,29 +108,31 @@ export function buildItems(messages: Message[], meId: string | null, isAnswer: (
 }
 
 /**
- * Loads older pages until one brings a row the transcript draws, which `draws`
- * decides for the rows a page added. buildItems leaves Calendar firings out, so
- * a page of them adds no row, and Virtuoso asks for older rows again only when
- * its first row changes: a routine that fires more often than its agent talks
- * would end the history at that page, or leave the room blank when its newest
- * page is all firings. `rows` reads the room's messages, oldest first. Stops
- * when `alive` turns false (the room was left) or no older row came: the
- * history ended, the request failed, or another load was already running.
- * Resolves whether a drawn row came.
+ * Loads older pages until a drawn row lands above the transcript's first row.
+ * Virtuoso asks for older rows again only when its first row's index changes,
+ * and a page can add no row there: buildItems leaves Calendar firings out, and
+ * work rows of the agent whose work chip is first only join that chip. A
+ * routine that fires more often than its agent talks would otherwise end the
+ * history at such a page, or leave the room blank when its newest page is all
+ * firings. `rows` reads the room's messages and `keys` the keys of the rows the
+ * transcript draws from them, both oldest first. A row arriving at the bottom
+ * meanwhile does not count. Stops when `alive` turns false (the room was left)
+ * or no message came: the history ended, the request failed, or another load
+ * was already running. Resolves whether a drawn row landed above.
  */
 export async function loadOlderUntilShown(
   loadOlder: () => Promise<void>,
   rows: () => Message[],
-  draws: (older: Message[]) => boolean,
+  keys: () => string[],
   alive: () => boolean,
 ): Promise<boolean> {
   while (alive()) {
-    const top = rows()[0]?.id
+    const count = rows().length
+    const first = keys()[0]
     await loadOlder()
-    const now = rows()
-    const older = now.slice(0, Math.max(0, now.findIndex((m) => m.id === top)))
-    if (older.length === 0) return false
-    if (draws(older)) return true
+    if (rows().length === count) return false
+    const now = keys()
+    if (first === undefined ? now.length > 0 : now.indexOf(first) > 0) return true
   }
   return false
 }
