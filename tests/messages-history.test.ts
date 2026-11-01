@@ -6,6 +6,8 @@ import ts from 'typescript'
 import { create } from 'zustand'
 import type { ApiMessage } from '../src/api/client'
 import { applyReplyCountDelta } from '../src/lib/replyCount'
+import { NO_ANSWERS, transcriptItems, transcriptKeys, type Answers } from '../src/next/chat/cardAnswers'
+import { loadOlderUntilShown } from '../src/next/chat/model'
 import type { Message } from '../src/types'
 
 // Execute the actual store with an in-memory API, without loading the browser
@@ -26,9 +28,8 @@ function messages(first: number, last: number): ApiMessage[] {
   })
 }
 
-function setup(last: number, cache: Message[] = messages(1, 80)) {
+function setup(last: number, cache: Message[] = messages(1, 80), serverMessages = messages(1, last)) {
   const requests: { before?: number; limit?: number }[] = []
-  const serverMessages = messages(1, last)
   const api = {
     async getMessages(_id: string, options: { before?: number; limit?: number }) {
       requests.push(options)
@@ -181,5 +182,143 @@ describe('message history after reconnect', () => {
     assert.deepEqual(sequences(), messages(1, 280).map((m) => m.sequence))
     assert.equal(requests.at(-1)?.before, 81)
     assert.equal(store.getState().firstItemIndex.chat, anchor - 80)
+  })
+})
+
+describe('older pages the redesigned transcript does not draw', () => {
+  /** Calendar firings, which buildItems leaves out of the transcript. */
+  const firings = (first: number, last: number): ApiMessage[] =>
+    messages(first, last).map((m) => ({ ...m, authorId: 'calendar', kind: 'system' }))
+  type Store = ReturnType<typeof setup>['store']
+  const drawn = (store: Store, answers: Answers = NO_ANSWERS) => transcriptItems(store.getState().byConvo.chat, 'user', answers).length
+  const showOlder = (store: Store, answers: Answers = NO_ANSWERS, alive = () => true) => loadOlderUntilShown(
+    () => store.getState().loadOlder('chat'),
+    () => store.getState().byConvo.chat,
+    (list) => transcriptKeys(list, 'user', answers),
+    alive,
+  )
+
+  it('pages past a run of firings to the newest row it draws', async () => {
+    // A routine room whose agent last spoke 290 firings ago: its newest page draws nothing.
+    const { store, requests } = setup(300, [], [...messages(1, 10), ...firings(11, 300)])
+    await store.getState().loadConversation('chat')
+    assert.equal(drawn(store), 0)
+
+    assert.equal(await showOlder(store), true)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+    assert.equal(drawn(store), 10)
+  })
+
+  it('pages past a secret reply among firings, which the transcript leaves out too', async () => {
+    const answers: Answers = new Map([['m-200', { kind: 'secret', question: 'm-q' }]])
+    const { store, requests } = setup(300, [], [...messages(1, 10), ...firings(11, 199), ...messages(200, 200), ...firings(201, 300)])
+    await store.getState().loadConversation('chat')
+
+    assert.equal(await showOlder(store, answers), true)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+    assert.equal(drawn(store, answers), 10)
+  })
+
+  it('stops where the history starts', async () => {
+    const { store, requests } = setup(200, [], firings(1, 200))
+    await store.getState().loadConversation('chat')
+    assert.equal(await showOlder(store), false)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 121, 41])
+  })
+
+  it('stops once the room is left', async () => {
+    const { store, requests } = setup(300, [], firings(1, 300))
+    await store.getState().loadConversation('chat')
+    assert.equal(await showOlder(store, NO_ANSWERS, () => requests.length < 2), false)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221])
+  })
+
+  it('stops after a failed page instead of asking again and again', async () => {
+    const { store, api, requests } = setup(300, [], firings(1, 300))
+    await store.getState().loadConversation('chat')
+    api.getMessages = async (_id, options) => {
+      requests.push(options)
+      throw new Error('offline')
+    }
+    assert.equal(await showOlder(store), false)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221])
+  })
+
+  it('says the rows above changed when the history ends on a page that joined the top chip', async () => {
+    // The last page lands rows above and joins the chip in one go, so the chip's
+    // key changes and no row counts as landed above it; the history then ends.
+    const tools = messages(6, 300).map((m) => ({ ...m, authorId: 'bot', kind: 'tool' as const }))
+    const { store, requests } = setup(300, [], [...messages(1, 5), ...tools])
+    await store.getState().loadConversation('chat')
+
+    assert.equal(await showOlder(store), true)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+    assert.equal(drawn(store), 6)
+  })
+
+  it('pages past tool rows that only join the work chip on top', async () => {
+    // An agent's long tool run: each older page adds rows to the first chip, not a row above it.
+    const tools = messages(61, 300).map((m) => ({ ...m, authorId: 'bot', kind: 'tool' as const }))
+    const { store, requests } = setup(300, [], [...messages(1, 60), ...tools])
+    await store.getState().loadConversation('chat')
+    assert.equal(drawn(store), 1)
+
+    assert.equal(await showOlder(store), true)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+    assert.equal(drawn(store), 61)
+  })
+
+  it('after a page that changes the top chip key, pages on until a row lands above the new first row', async () => {
+    // MessageList anchors Virtuoso by row key, so a chip whose key changed resets
+    // that anchor: the first row's index moves again only with a row above the new first row.
+    const tools = messages(101, 300).map((m) => ({ ...m, authorId: 'bot', kind: 'tool' as const }))
+    const said = messages(100, 100).map((m) => ({ ...m, authorId: 'bot' }))
+    const { store, requests } = setup(300, [], [...messages(1, 60), ...firings(61, 99), ...said, ...tools])
+    await store.getState().loadConversation('chat')
+
+    assert.equal(await showOlder(store), true)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+    assert.equal(drawn(store), 62)
+  })
+
+  it('keeps paging when a row arrives at the bottom meanwhile', async () => {
+    const { store, api, requests } = setup(300, [], [...messages(1, 10), ...firings(11, 299), ...messages(300, 300)])
+    await store.getState().loadConversation('chat')
+    const getMessages = api.getMessages
+    api.getMessages = async (id, options) => {
+      const page = await getMessages(id, options)
+      if (options.before === 221) store.getState().applyEvent({ type: 'message.new', conversationId: 'chat', message: messages(301, 301)[0] })
+      return page
+    }
+
+    assert.equal(await showOlder(store), true)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+  })
+
+  it('stops after a failed page even when a row arrives at the bottom meanwhile', async () => {
+    const { store, api, requests } = setup(300, [], firings(1, 300))
+    await store.getState().loadConversation('chat')
+    api.getMessages = async (_id, options) => {
+      requests.push(options)
+      store.getState().applyEvent({ type: 'message.new', conversationId: 'chat', message: messages(301, 301)[0] })
+      throw new Error('offline')
+    }
+
+    assert.equal(await showOlder(store), false)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221])
+  })
+
+  it('stops at once while another load is running', async () => {
+    const { store, api, requests } = setup(300, [], firings(1, 300))
+    await store.getState().loadConversation('chat')
+    const getMessages = api.getMessages
+    let release!: () => void
+    api.getMessages = (id, options) => new Promise((resolve) => { release = () => resolve(getMessages(id, options)) })
+    const running = store.getState().loadOlder('chat')
+
+    assert.equal(await showOlder(store), false)
+    assert.equal(requests.length, 1)
+    release()
+    await running
   })
 })

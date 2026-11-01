@@ -1,13 +1,14 @@
 /**
- * Pure lookups over a room's cards, for the store in ./cards.ts: which
- * messages answered a card, which question a quote is about, and which
- * question the room's agents wait on. Free of imports that need a browser
- * (./cards.ts opens the socket), so tests/question-cards.test.ts runs them
+ * Pure lookups over a room's cards: which messages answered a card, which
+ * question a quote is about, which question the room's agents wait on, and
+ * the rows the transcript draws, which depend on those answers. Free of
+ * imports that need a browser (./cards.ts opens the socket), so
+ * tests/question-cards.test.ts and tests/messages-history.test.ts run them
  * in node.
  */
 import type { Message } from '@/types'
 import type { Card } from './cards'
-import { createdAt, TALK_KINDS } from './model'
+import { buildItems, createdAt, TALK_KINDS, type Item } from './model'
 
 /** A room's answer replies, by their id and their client id: the kind of card
  *  each answered and that card's question message. */
@@ -33,6 +34,19 @@ export function roomAnswers(cards: Iterable<Card>, room: string, prev: Answers =
  *  is known before the reply is posted, so it is found from its first frame. */
 export function answerKind(answers: Answers, m: { id: string; clientId?: string }): Card['kind'] | undefined {
   return (answers.get(m.id) ?? (m.clientId === undefined ? undefined : answers.get(m.clientId)))?.kind
+}
+
+/** The rows the transcript draws (buildItems). The reply that answered a
+ *  question is a note; a secret's reply only says that it was sent, which its
+ *  card already shows, so it is left out. */
+export function transcriptItems(messages: Message[], me: string | null, answers: Answers): Item[] {
+  const shown = answers.size === 0 ? messages : messages.filter((m) => answerKind(answers, m) !== 'secret')
+  return buildItems(shown, me, (m) => answerKind(answers, m) === 'choice')
+}
+
+/** The keys of the rows the transcript draws, for loadOlderUntilShown. */
+export function transcriptKeys(messages: Message[], me: string | null, answers: Answers): string[] {
+  return transcriptItems(messages, me, answers).map((it) => it.key)
 }
 
 /** The question card a quote is about: the question itself, or the reply that answered it. */
