@@ -1,9 +1,9 @@
 /**
- * Pure lookups over a room's cards, for the store in ./cards.ts: which
- * messages answered a card, which question a quote is about, and which
- * question the room's agents wait on. Also the rows the transcript draws,
- * which depend on those answers (transcriptItems). Free of imports that need a browser
- * (./cards.ts opens the socket), so tests/question-cards.test.ts runs them
+ * Pure lookups over a room's cards: which messages answered a card, which
+ * question a quote is about, which question the room's agents wait on, and
+ * the rows the transcript draws, which depend on those answers. Free of
+ * imports that need a browser (./cards.ts opens the socket), so
+ * tests/question-cards.test.ts and tests/messages-history.test.ts run them
  * in node.
  */
 import type { Message } from '@/types'
@@ -42,6 +42,11 @@ export function answerKind(answers: Answers, m: { id: string; clientId?: string 
 export function transcriptItems(messages: Message[], me: string | null, answers: Answers): Item[] {
   const shown = answers.size === 0 ? messages : messages.filter((m) => answerKind(answers, m) !== 'secret')
   return buildItems(shown, me, (m) => answerKind(answers, m) === 'choice')
+}
+
+/** The keys of the rows the transcript draws, for loadOlderUntilShown. */
+export function transcriptKeys(messages: Message[], me: string | null, answers: Answers): string[] {
+  return transcriptItems(messages, me, answers).map((it) => it.key)
 }
 
 /** The question card a quote is about: the question itself, or the reply that answered it. */

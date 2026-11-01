@@ -125,9 +125,10 @@ export async function loadOlderUntilShown(
   alive: () => boolean,
 ): Promise<boolean> {
   let changed = false
+  // Only loadOlder awaits, so a run's keys are still the next run's starting keys.
+  let first = keysOf(rows())[0]
   while (alive()) {
     const oldest = rows()[0]?.id
-    const first = keysOf(rows())[0]
     await loadOlder()
     if (rows()[0]?.id === oldest) return changed
     const now = keysOf(rows())
@@ -135,6 +136,7 @@ export async function loadOlderUntilShown(
     // Older rows joined the first row (a work chip took an older row's key):
     // the run goes on, but the rows above changed even if the history ends here.
     if (first !== undefined && now[0] !== first) changed = true
+    first = now[0]
   }
   return changed
 }

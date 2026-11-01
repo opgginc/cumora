@@ -35,7 +35,7 @@ import { IconButton, INERT, Menu, Spinner, useCoarse, useMenu, type MenuEntry } 
 import { IArrowDown, IArrowUp, ICheck, ICopy, IDownload, IFile, IMore, IReply, ISpark, IThread, IWhisper } from '../ui/icons'
 import { createdAt, floatingDay, loadOlderUntilShown, type DayPill, type Item, type Pos, type Stamp } from './model'
 import { authorOf } from './deletedAuthor'
-import { NO_ANSWERS, roomTalk, transcriptItems } from './cardAnswers'
+import { NO_ANSWERS, roomTalk, transcriptItems, transcriptKeys } from './cardAnswers'
 import { useCardAnswers, useCards, useQuestionOf, useWaitingCard } from './cards'
 import { AskCard } from './AskCard'
 import { openFigures, useRoomTokens, useTokens } from './tokens'
@@ -846,7 +846,7 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     const changed = await loadOlderUntilShown(
       () => useMessages.getState().loadOlder(convoId),
       rows,
-      (list) => transcriptItems(list, me, useCards.getState().answers[convoId] ?? NO_ANSWERS).map((it) => it.key),
+      (list) => transcriptKeys(list, me, useCards.getState().answers[convoId] ?? NO_ANSWERS),
       () => mounted.current,
     )
     if (changed && pinned && mounted.current) ref.current?.scrollToIndex({ index: 'LAST', align: 'end' })

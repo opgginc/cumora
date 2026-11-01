@@ -6,7 +6,7 @@ import ts from 'typescript'
 import { create } from 'zustand'
 import type { ApiMessage } from '../src/api/client'
 import { applyReplyCountDelta } from '../src/lib/replyCount'
-import { NO_ANSWERS, transcriptItems, type Answers } from '../src/next/chat/cardAnswers'
+import { NO_ANSWERS, transcriptItems, transcriptKeys, type Answers } from '../src/next/chat/cardAnswers'
 import { loadOlderUntilShown } from '../src/next/chat/model'
 import type { Message } from '../src/types'
 
@@ -194,7 +194,7 @@ describe('older pages the redesigned transcript does not draw', () => {
   const showOlder = (store: Store, answers: Answers = NO_ANSWERS, alive = () => true) => loadOlderUntilShown(
     () => store.getState().loadOlder('chat'),
     () => store.getState().byConvo.chat,
-    (list) => transcriptItems(list, 'user', answers).map((it) => it.key),
+    (list) => transcriptKeys(list, 'user', answers),
     alive,
   )
 
