@@ -837,28 +837,41 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
-  const showOlder = useCallback(() => {
+  const showOlder = useCallback(async () => {
     const rows = () => useMessages.getState().byConvo[convoId] ?? EMPTY
-    return loadOlderUntilShown(
+    // Rows that do not fill the view yet sit at the bottom, and so must the
+    // newest row after paging: prepended rows are measured after they land, and
+    // a second page landing meanwhile could leave the view a screen above it.
+    const pinned = atBottomRef.current
+    const drawn = await loadOlderUntilShown(
       () => useMessages.getState().loadOlder(convoId),
       rows,
       () => transcriptItems(rows(), me, useCards.getState().answers[convoId] ?? NO_ANSWERS).map((it) => it.key),
       () => mounted.current,
     )
+    if (drawn && pinned && mounted.current) ref.current?.scrollToIndex({ index: 'LAST', align: 'end' })
+    return drawn
   }, [convoId, me])
   // Virtuoso asks for older rows only from a row it shows. A room whose newest
   // page is all Calendar firings pages back to its newest row behind the
   // skeleton, and offers a retry when a page fails on the way.
   const empty = items.length === 0
   const [olderFailed, setOlderFailed] = useState(false)
+  // A load the room's previous mount left running ends without paging on (its
+  // alive check fails), so this one starts once loadingOlder clears. `paging`
+  // keeps that from starting a second run between this run's pages, or from
+  // retrying a failed page before the run below has called it a failure.
+  const paging = useRef(false)
   useEffect(() => {
-    if (!loaded || !empty || !hasMore || olderFailed) return
+    if (!loaded || !empty || !hasMore || olderFailed || loadingOlder || paging.current) return
+    paging.current = true
     void showOlder().then((drawn) => {
+      paging.current = false
       // No row while more is left and nothing else is loading: a page failed.
       const s = useMessages.getState()
       if (!drawn && mounted.current && s.hasMoreOlder[convoId] && !s.loadingOlder.has(convoId)) setOlderFailed(true)
     })
-  }, [showOlder, loaded, empty, hasMore, olderFailed, convoId])
+  }, [showOlder, loaded, empty, hasMore, olderFailed, loadingOlder, convoId])
 
   // Streaming bubbles grow the footer, which Virtuoso's followOutput
   // does not watch; keep the bottom pinned ourselves while the user is there.

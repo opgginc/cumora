@@ -256,6 +256,19 @@ describe('older pages the redesigned transcript does not draw', () => {
     assert.equal(drawn(store), 61)
   })
 
+  it('after a page that changes the top chip key, pages on until a row lands above the new first row', async () => {
+    // MessageList anchors Virtuoso by row key, so a chip whose key changed resets
+    // that anchor: the first row's index moves again only with a row above the new first row.
+    const tools = messages(101, 300).map((m) => ({ ...m, authorId: 'bot', kind: 'tool' as const }))
+    const said = messages(100, 100).map((m) => ({ ...m, authorId: 'bot' }))
+    const { store, requests } = setup(300, [], [...messages(1, 60), ...firings(61, 99), ...said, ...tools])
+    await store.getState().loadConversation('chat')
+
+    assert.equal(await showOlder(store), true)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+    assert.equal(drawn(store), 62)
+  })
+
   it('keeps paging when a row arrives at the bottom meanwhile', async () => {
     const { store, api, requests } = setup(300, [], [...messages(1, 10), ...firings(11, 299), ...messages(300, 300)])
     await store.getState().loadConversation('chat')
