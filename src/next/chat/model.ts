@@ -110,28 +110,33 @@ export function buildItems(messages: Message[], meId: string | null, isAnswer: (
 /**
  * Loads older pages until a drawn row lands above the transcript's first row,
  * since Virtuoso asks for older rows again only when that row's index changes
- * (src/next/README.md, Routines tab). `rows` reads the room's messages and
- * `keys` the keys of the rows the transcript draws from them, both oldest
- * first; rows arriving at the bottom meanwhile count for neither check. Stops
+ * (src/next/README.md, Routines tab). `rows` reads the room's messages, oldest
+ * first, and `keysOf` gives the keys of the rows the transcript draws from
+ * them; rows arriving at the bottom meanwhile count for neither check. Stops
  * when `alive` turns false (the room was left) or no older message came: the
  * history ended, the request failed, or another load was already running.
- * Resolves whether a drawn row landed above.
+ * Resolves whether the rows above changed: a drawn row landed there, or older
+ * rows joined the first row on the way.
  */
 export async function loadOlderUntilShown(
   loadOlder: () => Promise<void>,
   rows: () => Message[],
-  keys: () => string[],
+  keysOf: (rows: Message[]) => string[],
   alive: () => boolean,
 ): Promise<boolean> {
+  let changed = false
   while (alive()) {
     const oldest = rows()[0]?.id
-    const first = keys()[0]
+    const first = keysOf(rows())[0]
     await loadOlder()
-    if (rows()[0]?.id === oldest) return false
-    const now = keys()
+    if (rows()[0]?.id === oldest) return changed
+    const now = keysOf(rows())
     if (first === undefined ? now.length > 0 : now.indexOf(first) > 0) return true
+    // Older rows joined the first row (a work chip took an older row's key):
+    // the run goes on, but the rows above changed even if the history ends here.
+    if (first !== undefined && now[0] !== first) changed = true
   }
-  return false
+  return changed
 }
 
 /** A mounted day chip's pill, as the floating day under the header sees it. Days

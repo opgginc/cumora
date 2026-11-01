@@ -843,14 +843,14 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     // newest row after paging: prepended rows are measured after they land, and
     // a second page landing meanwhile could leave the view a screen above it.
     const pinned = atBottomRef.current
-    const drawn = await loadOlderUntilShown(
+    const changed = await loadOlderUntilShown(
       () => useMessages.getState().loadOlder(convoId),
       rows,
-      () => transcriptItems(rows(), me, useCards.getState().answers[convoId] ?? NO_ANSWERS).map((it) => it.key),
+      (list) => transcriptItems(list, me, useCards.getState().answers[convoId] ?? NO_ANSWERS).map((it) => it.key),
       () => mounted.current,
     )
-    if (drawn && pinned && mounted.current) ref.current?.scrollToIndex({ index: 'LAST', align: 'end' })
-    return drawn
+    if (changed && pinned && mounted.current) ref.current?.scrollToIndex({ index: 'LAST', align: 'end' })
+    return changed
   }, [convoId, me])
   // Virtuoso asks for older rows only from a row it shows. A room whose newest
   // page is all Calendar firings pages back to its newest row behind the

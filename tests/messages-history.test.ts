@@ -194,7 +194,7 @@ describe('older pages the redesigned transcript does not draw', () => {
   const showOlder = (store: Store, answers: Answers = NO_ANSWERS, alive = () => true) => loadOlderUntilShown(
     () => store.getState().loadOlder('chat'),
     () => store.getState().byConvo.chat,
-    () => transcriptItems(store.getState().byConvo.chat, 'user', answers).map((it) => it.key),
+    (list) => transcriptItems(list, 'user', answers).map((it) => it.key),
     alive,
   )
 
@@ -242,6 +242,18 @@ describe('older pages the redesigned transcript does not draw', () => {
     }
     assert.equal(await showOlder(store), false)
     assert.deepEqual(requests.map((r) => r.before), [undefined, 221])
+  })
+
+  it('says the rows above changed when the history ends on a page that joined the top chip', async () => {
+    // The last page lands rows above and joins the chip in one go, so the chip's
+    // key changes and no row counts as landed above it; the history then ends.
+    const tools = messages(6, 300).map((m) => ({ ...m, authorId: 'bot', kind: 'tool' as const }))
+    const { store, requests } = setup(300, [], [...messages(1, 5), ...tools])
+    await store.getState().loadConversation('chat')
+
+    assert.equal(await showOlder(store), true)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
+    assert.equal(drawn(store), 6)
   })
 
   it('pages past tool rows that only join the work chip on top', async () => {
