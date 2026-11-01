@@ -846,7 +846,6 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
       () => mounted.current,
     )
   }, [convoId, me])
-  const onStartReached = useCallback(() => { void showOlder() }, [showOlder])
   // Virtuoso asks for older rows only from a row it shows. A room whose newest
   // page is all Calendar firings pages back to its newest row behind the
   // skeleton, and offers a retry when a page fails on the way.
@@ -1005,7 +1004,7 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
         totalListHeightChanged={() => onLiveChange(true)}
         atBottomThreshold={96}
         atBottomStateChange={setAtBottom}
-        startReached={onStartReached}
+        startReached={showOlder}
         rangeChanged={onRange}
         increaseViewportBy={{ top: 800, bottom: 400 }}
         defaultItemHeight={64}

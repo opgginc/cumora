@@ -270,6 +270,19 @@ describe('older pages the redesigned transcript does not draw', () => {
     assert.deepEqual(requests.map((r) => r.before), [undefined, 221, 141, 61])
   })
 
+  it('stops after a failed page even when a row arrives at the bottom meanwhile', async () => {
+    const { store, api, requests } = setup(300, [], firings(1, 300))
+    await store.getState().loadConversation('chat')
+    api.getMessages = async (_id, options) => {
+      requests.push(options)
+      store.getState().applyEvent({ type: 'message.new', conversationId: 'chat', message: messages(301, 301)[0] })
+      throw new Error('offline')
+    }
+
+    assert.equal(await showOlder(store), false)
+    assert.deepEqual(requests.map((r) => r.before), [undefined, 221])
+  })
+
   it('stops at once while another load is running', async () => {
     const { store, api, requests } = setup(300, [], firings(1, 300))
     await store.getState().loadConversation('chat')

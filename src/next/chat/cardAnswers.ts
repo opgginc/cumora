@@ -1,7 +1,8 @@
 /**
  * Pure lookups over a room's cards, for the store in ./cards.ts: which
  * messages answered a card, which question a quote is about, and which
- * question the room's agents wait on. Free of imports that need a browser
+ * question the room's agents wait on. Also the rows the transcript draws,
+ * which depend on those answers (transcriptItems). Free of imports that need a browser
  * (./cards.ts opens the socket), so tests/question-cards.test.ts runs them
  * in node.
  */

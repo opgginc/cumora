@@ -108,17 +108,14 @@ export function buildItems(messages: Message[], meId: string | null, isAnswer: (
 }
 
 /**
- * Loads older pages until a drawn row lands above the transcript's first row.
- * Virtuoso asks for older rows again only when its first row's index changes,
- * and a page can add no row there: buildItems leaves Calendar firings out, and
- * work rows of the agent whose work chip is first only join that chip. A
- * routine that fires more often than its agent talks would otherwise end the
- * history at such a page, or leave the room blank when its newest page is all
- * firings. `rows` reads the room's messages and `keys` the keys of the rows the
- * transcript draws from them, both oldest first. A row arriving at the bottom
- * meanwhile does not count. Stops when `alive` turns false (the room was left)
- * or no message came: the history ended, the request failed, or another load
- * was already running. Resolves whether a drawn row landed above.
+ * Loads older pages until a drawn row lands above the transcript's first row,
+ * since Virtuoso asks for older rows again only when that row's index changes
+ * (src/next/README.md, Routines tab). `rows` reads the room's messages and
+ * `keys` the keys of the rows the transcript draws from them, both oldest
+ * first; rows arriving at the bottom meanwhile count for neither check. Stops
+ * when `alive` turns false (the room was left) or no older message came: the
+ * history ended, the request failed, or another load was already running.
+ * Resolves whether a drawn row landed above.
  */
 export async function loadOlderUntilShown(
   loadOlder: () => Promise<void>,
@@ -127,10 +124,10 @@ export async function loadOlderUntilShown(
   alive: () => boolean,
 ): Promise<boolean> {
   while (alive()) {
-    const count = rows().length
+    const oldest = rows()[0]?.id
     const first = keys()[0]
     await loadOlder()
-    if (rows().length === count) return false
+    if (rows()[0]?.id === oldest) return false
     const now = keys()
     if (first === undefined ? now.length > 0 : now.indexOf(first) > 0) return true
   }
