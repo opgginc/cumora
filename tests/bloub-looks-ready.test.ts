@@ -129,3 +129,14 @@ test("a load from before a switch that fails afterwards leaves the new workspace
   await old
   assert.equal(s.looks().ready, false)
 })
+
+test('a pick from before a switch that fails afterwards does not reject in the new workspace', async () => {
+  const fails: Array<(error: Error) => void> = []
+  const s = setup(() => new Promise((_resolve, reject) => { fails.push(reject) }))
+  const saving = s.looks().save('bot', { shape: 'round', color: 'bleu', accessories: [] })
+  await settle()
+  s.useAuth.setState({ contextEpoch: 1 })
+  fails[0](new Error('offline'))
+  await saving
+  assert.equal(s.looks().ready, false)
+})
