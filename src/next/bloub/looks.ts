@@ -31,6 +31,9 @@ export type BloubPick = Pick<BloubLook, 'shape' | 'color' | 'accessories'>
 
 interface State {
   byId: Record<string, BloubLook>
+  /** The workspace's looks loaded, or failed to: until then any agent may
+   *  turn out to wear a bloub, and its avatar waits (ui/Avatar.tsx). */
+  ready: boolean
   load: () => Promise<void>
   /** Saves a pick, or goes back to the portrait with null. Applies locally at
    *  once; a failed write reloads the server's copy and rejects. A write made
@@ -76,7 +79,7 @@ export const useBloubLooks = create<State>((set, get) => {
   }
 
   useAuth.subscribe((s, prev) => {
-    if (s.contextEpoch !== prev.contextEpoch) set({ byId: {} })
+    if (s.contextEpoch !== prev.contextEpoch) set({ byId: {}, ready: false })
   })
 
   // A fork event, outside the client's event union. A look not loaded yet
@@ -93,23 +96,29 @@ export const useBloubLooks = create<State>((set, get) => {
 
   return {
     byId: {},
+    ready: false,
 
     async load() {
       const since = writes
       try {
         const { avatars: sent } = await enqueue(() =>
           http<{ avatars: Record<string, Omit<BloubLook, 'accessories'> & { accessories?: string[] }> }>('/fork/bloub-avatars'))
-        if (writes !== since) return
-        // A server from before accessories sends looks without them. The apps
-        // carry their own web build, so a newer app meets such a server.
-        const avatars = Object.fromEntries(Object.entries(sent).map(([id, look]) => [id, { ...look, accessories: look.accessories ?? [] }]))
-        if (Object.keys(avatars).length > 0) preloadEngine()
-        // Most foreground returns bring back the same looks; keeping the old
-        // object keeps every avatar from re-rendering for nothing.
-        if (JSON.stringify(avatars) !== JSON.stringify(get().byId)) set({ byId: avatars })
+        if (writes === since) {
+          // A server from before accessories sends looks without them. The apps
+          // carry their own web build, so a newer app meets such a server.
+          const avatars = Object.fromEntries(Object.entries(sent).map(([id, look]) => [id, { ...look, accessories: look.accessories ?? [] }]))
+          if (Object.keys(avatars).length > 0) preloadEngine()
+          // Most foreground returns bring back the same looks; keeping the old
+          // object keeps every avatar from re-rendering for nothing.
+          if (JSON.stringify(avatars) !== JSON.stringify(get().byId)) set({ byId: avatars })
+        }
       } catch (e) {
-        if (e !== SWITCHED) console.warn('[next] bloub avatars load failed', e)
+        // The next workspace's own load settles it.
+        if (e === SWITCHED) return
+        console.warn('[next] bloub avatars load failed', e)
       }
+      // Loaded or not, avatars stop waiting: after a failed load every agent shows its portrait.
+      if (!get().ready) set({ ready: true })
     },
 
     async save(agentId, pick) {

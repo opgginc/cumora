@@ -3270,8 +3270,10 @@ export async function generateAndPersistAvatar(args: {
     throw new HttpError(502, 'image API returned no image')
   }
 
-  const key = `avatars/avatar-${id}-${randomUUID().slice(0, 8)}.png`
-  const url = await storage.put(key, imageBuf, 'image/png')
+  // Fork: stored at the size the apps draw it (fork/portrait.ts).
+  const { portraitWebp } = await import('../fork/portrait.js')
+  const key = `avatars/avatar-${id}-${randomUUID().slice(0, 8)}.webp`
+  const url = await storage.put(key, await portraitWebp(imageBuf), 'image/webp')
   await withOutboxTransaction(async (client) => {
     await client.query(
       `UPDATE participants SET avatar_url = $2 WHERE id = $1 AND company_id = $3`,

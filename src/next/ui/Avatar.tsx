@@ -1,6 +1,6 @@
 import { memo, type CSSProperties } from 'react'
 import type { Participant } from '@/types'
-import { AVATAR_IMG_LOADING, useAvatarImg, useCachedAvatarSrc } from '@/lib/avatarCache'
+import { AVATAR_IMG_LOADING, useAvatarImg } from '@/lib/avatarCache'
 import { useAuth } from '@/stores/auth'
 import { useComputers } from '@/stores/computers'
 import { BloubAvatar } from '../bloub/BloubAvatar'
@@ -34,13 +34,20 @@ interface Props {
 
 function AvatarImpl({ p, size = 32, presence = false, className }: Props) {
   const look = useBloubLooks((s) => (p.kind === 'agent' ? s.byId[p.id] : undefined))
+  // Until the looks load, an agent may still turn out to wear a bloub: its
+  // portrait would be a download nobody sees, on the connection the room's
+  // messages need. It waits as a blank disc.
+  const unknown = useBloubLooks((s) => p.kind === 'agent' && !s.ready)
   // A bloub plays the agent's state itself, so it carries no presence dot or ring.
   if (look) return <BloubAvatar agentId={p.id} look={look} size={size} className={className} />
+  if (unknown) return <span className={className ? `nx-avatar ${className}` : 'nx-avatar'} style={{ width: size, height: size, background: 'var(--muted)' }} aria-hidden />
   return <Portrait p={p} size={size} presence={presence} className={className} />
 }
 
 function Portrait({ p, size = 32, presence = false, className }: Props) {
-  const src = useCachedAvatarSrc(p.id, p.avatarUrl)
+  // The <img> is a portrait's one download, kept by the browser's cache: an
+  // agent's new portrait gets a new storage key, so its URL changes with it.
+  const src = p.avatarUrl ?? null
   const { showImg, imgKey, onError } = useAvatarImg(src)
   const state = usePresence(presence ? p : undefined)
   const dot = Math.max(8, Math.round(size * 0.26))
