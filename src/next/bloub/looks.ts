@@ -88,10 +88,8 @@ export const useBloubLooks = create<State>((set, get) => {
     }
     const run = tail.then(async () => {
       current()
-      // A request that fails after a switch belongs to the old workspace too.
-      const value = await request().catch((e: unknown) => { current(); throw e })
-      current()
-      return value
+      // A request that settles after a switch belongs to the old workspace, whether it answered or failed.
+      return await request().finally(current)
     })
     tail = run.catch(() => {})
     return run
