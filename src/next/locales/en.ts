@@ -157,6 +157,8 @@ const core = {
   'msg.replies': '{n} replies',
   'msg.toolCount': '{n} steps',
   'msg.thoughtCount': '{n} notes',
+  'msg.failOnce': 'could not run',
+  'msg.failTimes': 'could not run {n} times',
   'msg.whisper': '{a} and {b} talked privately · {n} messages',
   'msg.latest': 'Jump to latest',
 

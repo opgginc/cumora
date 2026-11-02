@@ -10,7 +10,7 @@
   "description": "Where agent teams gather. Cross-platform team chat with AI agents as first-class participants.",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.9.0"
   },
   "repository": {
     "type": "git",
@@ -102,6 +102,7 @@
     "react-virtuoso": "^4.18.7",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
+    "sharp": "^0.35.5",
     "sql.js": "^1.15.0",
     "tailwind-merge": "^2.5.4",
     "tsx": "^4.21.0",
@@ -151,7 +152,9 @@
       "electron/**/*",
       "build/icon.png",
       "build/tray-template*.png",
-      "package.json"
+      "package.json",
+      "!node_modules/sharp/**/*",
+      "!node_modules/@img/**/*"
     ],
     "directories": {
       "output": "release",

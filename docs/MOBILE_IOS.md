@@ -31,8 +31,6 @@ npm install
 # `npx cap add ios` on a fresh checkout.
 
 # Generate App Icon + Splash assets from build/icon.png.
-# `sharp` is required just for this script — install transient.
-npm install --no-save sharp
 node scripts-gen-ios-assets.mjs
 
 # Build the web bundle, then copy assets and resolve native plugins.

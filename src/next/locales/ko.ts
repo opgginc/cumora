@@ -168,6 +168,8 @@ export const ko: Record<keyof typeof en, string> = {
   'msg.replies': '답장 {n}개',
   'msg.toolCount': '{n}단계',
   'msg.thoughtCount': '메모 {n}개',
+  'msg.failOnce': '실행 실패',
+  'msg.failTimes': '실행 실패 {n}회',
   'msg.whisper': '{a}, {b}의 귓속말 · 메시지 {n}개',
   'msg.latest': '최신 메시지로 이동',
 

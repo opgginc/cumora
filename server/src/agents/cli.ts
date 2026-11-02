@@ -2700,7 +2700,7 @@ function extToMime(ext: string): string | null {
 
 /** Regenerate the calling agent's portrait via the image API. Composes
  *  the same prompt the HTTP endpoint uses, uploads to storage as
- *  `avatars/avatar-<id>-<rand>.png`, and stamps `participants.avatar_url`.
+ *  `avatars/avatar-<id>-<rand>.webp`, and stamps `participants.avatar_url`.
  *  Heavy — image-gen takes several seconds; the bash() tool call will
  *  block for that long. */
 /** `cumora skills <op>` — manage Agent Skills (progressive-disclosure
@@ -3826,20 +3826,13 @@ async function setAgentAvatarFromUrl(args: {
     if (fetched.reason === 'timeout') throw new Error('source URL timed out')
     throw new Error('source URL could not be fetched')
   }
-  const { buffer: buf, mime } = fetched
+  const { buffer: buf } = fetched
   if (buf.length === 0) throw new Error('source image is empty')
 
-  // Pick a sensible extension from the mime so the stored object has a
-  // useful filename and the Worker serves the right content-type.
-  const ext = mime === 'image/jpeg' ? 'jpg'
-            : mime === 'image/webp' ? 'webp'
-            : mime === 'image/gif'  ? 'gif'
-            : mime === 'image/svg+xml' ? 'svg'
-            : 'png'
-  const { storage } = await import('../storage.js')
-  const { randomUUID } = await import('node:crypto')
-  const key = `avatars/avatar-${args.agentId}-${randomUUID().slice(0, 8)}.${ext}`
-  const url = await storage.put(key, buf, mime)
+  // Fork: stored at the size the apps draw it (fork/portrait.ts), so every
+  // portrait is a WebP whatever the source format was.
+  const { storePortrait } = await import('../fork/portrait.js')
+  const url = await storePortrait(args.agentId, buf)
 
   await withOutboxTransaction(async (client) => {
     await client.query(

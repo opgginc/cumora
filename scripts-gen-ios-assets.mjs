@@ -5,13 +5,11 @@
  * and writes a complete `AppIcon.appiconset` plus a 2732×2732
  * splash image into ios/App/App/Assets.xcassets. Run AFTER
  * `npx cap add ios` has created the Xcode project.
- *
- * Falls back gracefully when `sharp` isn't installed — prints what it
- * would write so a CI maintainer can wire it up later.
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import sharp from 'sharp'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -103,14 +101,6 @@ async function main() {
       console.warn(`  → ${iconFile(s)} (${Math.round(s.size * s.scale)}px)`)
     }
     return
-  }
-
-  let sharp
-  try {
-    sharp = (await import('sharp')).default
-  } catch {
-    console.warn('`sharp` not installed — run `npm install --no-save sharp` then re-run.')
-    process.exit(2)
   }
 
   fs.mkdirSync(APPICON, { recursive: true })
