@@ -8,6 +8,8 @@
  * requests, a thread without a pull request list, and the session closed. A
  * thread's detail reads the end of a timeline T3 pages from its start, and
  * shows agent text, so it is pinned that the text is redacted before its cut.
+ * A wake is posted where the whole room can read it, so it is pinned that it
+ * carries no text of the thread.
  */
 import { test, after, type TestContext } from 'node:test'
 import assert from 'node:assert/strict'
@@ -22,7 +24,7 @@ writeFileSync(join(root, 'server/computer/t3code/tok'), 'token-123\n')
 writeFileSync(join(root, 'server/computer/t3code/bad'), 'token-line-one\ntoken-line-two\n')
 const cwd = process.cwd()
 process.chdir(root)
-const { agentCoding, codingThread, markedThreads, parseMark, poll, threadDetail } = await import('../fork/coding.js')
+const { agentCoding, codingThread, markedThreads, parseMark, poll, threadDetail, wakeOf } = await import('../fork/coding.js')
 process.chdir(cwd)
 after(() => rmSync(root, { recursive: true, force: true }))
 
@@ -82,7 +84,7 @@ test('a poll reads every page of every live project, asks running threads for a 
     if (name === 't3_thread_list') {
       return { threads: [thread('th-3', 'completed', { pullRequests: undefined, settled: true, settledAt: '2026-10-21T09:00:00+09:00' })], nextCursor: null }
     }
-    if (name === 't3_pending_request_list') return { requestIds: args.threadId === 'th-1' ? ['q-1'] : [] }
+    if (name === 't3_pending_request' && args.action === 'list') return { requestIds: args.threadId === 'th-1' ? ['q-1'] : [] }
     throw new Error(`unexpected ${name}`)
   })
 
@@ -96,7 +98,7 @@ test('a poll reads every page of every live project, asks running threads for a 
   assert.deepEqual(calls, [
     't3_project_list {"limit":100}',
     't3_thread_list {"projectId":"p1","titleContains":"[@","limit":100,"cursor":0}',
-    't3_pending_request_list {"threadId":"th-1"}',
+    't3_pending_request {"action":"list","threadId":"th-1"}',
     't3_thread_list {"projectId":"p1","titleContains":"[@","limit":100,"cursor":2}',
     'DELETE s-1',
   ])
@@ -134,8 +136,8 @@ test('a detail reads the newest messages from the end of the timeline and the qu
     if (name === 't3_thread_read' && args.afterPosition === 300) {
       return timeline(thread, [item(400, 'assistant_message', 'b'.repeat(4_100)), item(449, 'assistant_message', 'Cut by T3\nmid-wo', true)], 449, false)
     }
-    if (name === 't3_pending_request_list') return { requestIds: ['q-1'] }
-    if (name === 't3_pending_request_read') {
+    if (name === 't3_pending_request' && args.action === 'list') return { requestIds: ['q-1'] }
+    if (name === 't3_pending_request' && args.action === 'read') {
       return { requestId: 'q-1', questions: [{ id: 'a', header: 'Deploy', question: 'Push with GITHUB_TOKEN=abc123 now?', options: [{ label: 'Yes', description: 'Push to main' }] }] }
     }
     throw new Error(`unexpected ${name}`)
@@ -148,8 +150,8 @@ test('a detail reads the newest messages from the end of the timeline and the qu
     't3_thread_read {"threadId":"th-1","limit":1,"maxCharsPerItem":1}',
     't3_thread_read {"threadId":"th-1","afterPosition":249,"limit":100,"maxCharsPerItem":8000}',
     't3_thread_read {"threadId":"th-1","afterPosition":300,"limit":100,"maxCharsPerItem":8000}',
-    't3_pending_request_list {"threadId":"th-1"}',
-    't3_pending_request_read {"threadId":"th-1","requestId":"q-1"}',
+    't3_pending_request {"action":"list","threadId":"th-1"}',
+    't3_pending_request {"action":"read","threadId":"th-1","requestId":"q-1"}',
     'DELETE s-1',
   ])
   assert.equal(detail.link, 't3code-dev://threads/env-1/th-1')
@@ -352,4 +354,21 @@ test('a poll unlists what a whole read no longer finds, keeps the copy when the 
   await poll(t3)
   assert.deepEqual(shown(), ['th-a', 'th-b'])
   assert.deepEqual(store.codingWakesDue(t3.name, ['completed']), [], 'its agent is not woken twice for one rest')
+})
+
+test('a wake names T3’s current tools, has the agent name a thread for the owner without a link, and shows the room none of its text', () => {
+  const copy = {
+    server: 't3code-m4', threadId: 'mcp:th-1', companyId: 'c1', agentId: 'bot', conversationId: null, title: 'Fix what #general asked',
+    status: 'question', runId: 'run-1', requestId: 'q-1', pullRequests: [], createdAt: '2026-10-20T01:00:00.000Z',
+    updatedAt: '2026-10-20T01:05:00.000Z', settledAt: null,
+  }
+  const asked = wakeOf(copy, 'room-1')
+  assert.match(asked.agentPrompt, /t3_pending_request \(action "read", requestId q-1\) on the T3 MCP server t3code-m4 \(threadId mcp:th-1\)/)
+  assert.match(asked.agentPrompt, /t3_pending_request \(action "respond"\)/)
+  const done = wakeOf({ ...copy, status: 'completed', requestId: null }, 'room-1')
+  for (const w of [asked, done]) {
+    assert.match(w.agentPrompt, /owner's to give.* title.* T3 server t3code-m4.* project.* instead of a link/)
+    // The room's members can read every field of the posted wake (dispatch.ts wakeBody).
+    assert.ok(!JSON.stringify(w).includes(copy.title), `the thread's title stays out of the ${w.title} wake`)
+  }
 })

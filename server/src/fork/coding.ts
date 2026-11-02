@@ -127,7 +127,7 @@ interface T3Timeline {
   nextPosition: number | null
   hasMore: boolean
 }
-/** One question of a pending request, as t3_pending_request_read answers it. */
+/** One question of a pending request, as t3_pending_request answers action "read". */
 interface T3Question { id: string; header: string; question: string; options: Array<{ label: string; description: string }> }
 /** What a thread's detail shows beyond its copy, its text redacted (threadDetail). */
 export interface ThreadDetail {
@@ -256,7 +256,7 @@ export async function markedThreads(server: T3Server): Promise<ReadThread[]> {
           // T3 tells a question by its pending request, not by the thread's
           // status: the run stays running while it waits for the answer.
           const asked = t.status === 'running'
-            ? (await t3.call<{ requestIds: string[] }>('t3_pending_request_list', { threadId: t.threadId })).requestIds
+            ? (await t3.call<{ requestIds: string[] }>('t3_pending_request', { action: 'list', threadId: t.threadId })).requestIds
             : []
           const pullRequests = (t.pullRequests ?? []).map(({ number, url, state }) => ({ number, url, state }))
           // In toISOString()'s form, which the list compares as text. A time
@@ -295,10 +295,10 @@ export async function threadDetail(server: T3Server, threadId: string, scheme: s
     }
     // A pending request may also be an approval, which T3 does not list here.
     const [requestId] = thread.pendingRequestCount > 0
-      ? (await t3.call<{ requestIds: string[] }>('t3_pending_request_list', { threadId })).requestIds
+      ? (await t3.call<{ requestIds: string[] }>('t3_pending_request', { action: 'list', threadId })).requestIds
       : []
     const questions = requestId
-      ? (await t3.call<{ questions: T3Question[] }>('t3_pending_request_read', { threadId, requestId })).questions
+      ? (await t3.call<{ questions: T3Question[] }>('t3_pending_request', { action: 'read', threadId, requestId })).questions
       : []
     const messages = items.flatMap((m) => {
       const kind = KINDS.get(m.type)
@@ -391,9 +391,15 @@ async function agentWorkspaces(): Promise<string[]> {
   return rows.map((r) => r.company_id)
 }
 
-function wakeOf(t: CodingThread, room: string): Wake {
+/** The wake of an agent whose thread came to rest or asks a question.
+ *  Exported for tests. */
+export function wakeOf(t: CodingThread, room: string): Wake {
   const where = `on the T3 MCP server ${t.server} (threadId ${t.threadId})`
   const question = t.status === 'question'
+  // T3's tool descriptions tell an agent to name a thread by its `link`, but
+  // the owner finds a thread in T3 by its title, its server and its project,
+  // so the room gets those and no link.
+  const ownersCall = `When the thread waits for an answer or an approval that is the owner's to give, tell this room its title, its T3 server ${t.server} and its project or repository instead of a link to it.`
   return {
     companyId: t.companyId,
     assigneeId: t.agentId,
@@ -405,8 +411,8 @@ function wakeOf(t: CodingThread, room: string): Wake {
     title: question ? 'A T3 Code thread needs an answer' : `A T3 Code thread is ${t.status}`,
     description: `The T3 Code thread ${t.threadId} on ${t.server}, whose title carries your mark, ${question ? 'waits for an answer' : `is ${t.status}`}.`,
     agentPrompt: question
-      ? `Read its question with t3_pending_request_read (requestId ${t.requestId}) ${where}. Answer it with t3_pending_request_respond when the answer is yours to give, or ask the people in this room. Never answer with a secret or a credential unless a person in this room tells you to.`
-      : `Read how it went with t3_thread_read ${where} and tell this room in a short message, unless you already did.`,
+      ? `Read its question with t3_pending_request (action "read", requestId ${t.requestId}) ${where}. Answer it with t3_pending_request (action "respond") when the answer is yours to give, or ask the people in this room. ${ownersCall} Never answer with a secret or a credential unless a person in this room tells you to.`
+      : `Read how it went with t3_thread_read ${where} and tell this room in a short message, unless you already did. ${ownersCall}`,
     scheduledFor: t.updatedAt,
   }
 }
