@@ -25,6 +25,8 @@ const ERRORS = {
   killed: 'local codex failed (exit 128): process terminated by SIGKILL',
   json: 'local codex failed (exit 1): {"error":{"message":"All target providers failed."}}',
   bare: 'local claude failed (exit 1): unknown',
+  // Every Claude Code category, and a one-word line that is the error itself.
+  oneWord: `local codex failed (exit 137): Running agent turn\nkilled\n${['unknown', 'rate_limit', 'overloaded', 'server_error', 'authentication_failed', 'cloud_credential_error'].join('\n')}`,
 }
 
 test('a connection outage keeps the error, not the category of every retry', () => {
@@ -40,6 +42,10 @@ test('a repeated error shows once, and prose around it stays in order', () => {
 
 test('errors without categories and errors made only of them come back as they were', () => {
   for (const error of [ERRORS.killed, ERRORS.json, ERRORS.bare]) assert.equal(noticeDetail(error), error)
+})
+
+test("a one-word line that is not a Claude Code category is the error and stays", () => {
+  assert.equal(noticeDetail(ERRORS.oneWord), 'local codex failed (exit 137): Running agent turn\nkilled')
 })
 
 test('an old notice opened in the transcript reads as the daemon posts it now', () => {
