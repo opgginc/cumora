@@ -90,8 +90,9 @@ export function buildItems(messages: Message[], meId: string | null, isAnswer: (
     if (failureText(m) !== null) {
       // Keyed by its newest failure, unlike a work run: older pages join a
       // failure line at its top (one routine fails all through an outage), and
-      // the key must hold then for the list's scroll anchor (MessageList) and
-      // for loadOlderUntilShown, which pages on while the first row's key moves.
+      // loadOlderUntilShown pages on while the first row's key moves. A new
+      // failure moves the key instead, so what must find the line again (the
+      // list's scroll anchor, an opened line) goes by its messages (rowIndexOf).
       if (last?.type === 'fail' && last.authorId === m.authorId && day === null) {
         last.msgs.push(m)
         last.key = `f-${keyOf(m)}`
@@ -124,6 +125,17 @@ export function buildItems(messages: Message[], meId: string | null, isAnswer: (
     out.push({ type: 'msg', key: keyOf(m), msg: m, mine: m.authorId === meId, pos: joins ? 'last' : 'single', stamp, day, pause, at })
   }
   return out
+}
+
+/** The messages a row stands for: a work run's or a failure line's, or its one message. */
+export function rowMessages(it: Item): Message[] {
+  return it.type === 'work' || it.type === 'fail' ? it.msgs : [it.msg]
+}
+
+/** The row holding the message with this key (keyOf), or -1. A row that
+ *  gathers messages changes its key as they join it, at its top or bottom. */
+export function rowIndexOf(items: Item[], key: string): number {
+  return items.findIndex((it) => rowMessages(it).some((m) => keyOf(m) === key))
 }
 
 /**

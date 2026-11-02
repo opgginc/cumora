@@ -2,15 +2,17 @@
  * Engine-failure lines (src/next/chat/failures.ts, buildItems). The mistakes
  * worth catching: an outage's notices, half an hour apart with Calendar
  * firings between them, not joining into one line; a line taking in another
- * agent's failure or the next day's; older pages changing a line's key, which
- * the list's scroll anchor and paging follow; and the line's reason showing a
- * retry category, the agent prefix or the hint instead of the error.
+ * agent's failure, the next day's, or a notice that is not a failed run;
+ * losing a line (the list's scroll anchor, an opened line) when a failure
+ * joins it at either end; and the line's reason showing a retry category,
+ * the agent prefix or the hint instead of the error. How an opened failure
+ * reads is pinned against the daemon in server/src/__tests__/fork-engine-notice.test.ts.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Message } from '../src/types.ts'
-import { buildItems } from '../src/next/chat/model.ts'
-import { failureDetail, failureReason } from '../src/next/chat/failures.ts'
+import { buildItems, keyOf, rowIndexOf } from '../src/next/chat/model.ts'
+import { failureReason } from '../src/next/chat/failures.ts'
 
 let n = 0
 /** `t` is a local time on 2026-11-01, or a full local ISO date-time. */
@@ -18,8 +20,9 @@ const row = (authorId: string, t: string, kind: Message['kind'], body: string): 
   id: `m${++n}`, conversationId: 'c', authorId, kind, body, at: '',
   createdAt: t.includes('T') ? t : `2026-11-01T${t}`,
 }) as Message
-const failure = (authorId: string, t: string, text: string) => row(authorId, t, 'system', JSON.stringify({ kind: 'notice', noticeKind: 'byoa_engine_failed', text }))
+const notice = (authorId: string, t: string, text: string) => row(authorId, t, 'system', JSON.stringify({ kind: 'notice', noticeKind: 'byoa_engine_failed', text }))
 const firing = (t: string) => row('calendar', t, 'system', JSON.stringify({ kind: 'calendar_event', title: 'Merge digest' }))
+const say = (authorId: string, t: string) => row(authorId, t, 'text', 'hi')
 const items = (rows: Message[]) => buildItems(rows, 'me', () => false)
 
 const HINT = 'Check the daemon terminal for details, then wake the agent again.'
@@ -31,19 +34,32 @@ const REFUSED = [
   'API Error: Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)',
   HINT,
 ].join('\n')
+const failure = (authorId: string, t: string) => notice(authorId, t, REFUSED)
 
 test("one agent's failures join across pauses and firings, but not across agents or days", () => {
   const list = items([
-    failure('bot', '04:51:39', REFUSED), firing('05:00:00'), failure('bot', '05:16:53', REFUSED), failure('bot', '05:40:18', REFUSED),
-    failure('other', '05:41:00', REFUSED), failure('bot', '05:42:00', REFUSED),
-    failure('bot', '2026-11-02T00:10:00', REFUSED),
+    failure('bot', '04:51:39'), firing('05:00:00'), failure('bot', '05:16:53'), failure('bot', '05:40:18'),
+    failure('other', '05:41:00'), failure('bot', '05:42:00'),
+    failure('bot', '2026-11-02T00:10:00'),
   ])
   assert.deepEqual(list.map((it) => (it.type === 'fail' ? `${it.authorId}×${it.msgs.length}` : it.type)), ['bot×3', 'other×1', 'bot×1', 'bot×1'])
 })
 
-test('older failures joining a line keep its key', () => {
-  const [a, b, c] = [failure('bot', '04:51:39', REFUSED), failure('bot', '05:16:53', REFUSED), failure('bot', '05:40:18', REFUSED)]
-  assert.deepEqual(items([a, b, c]).map((it) => it.key), items([b, c]).map((it) => it.key))
+test('a notice of the kind that is not a failed run keeps its own row', () => {
+  const paused = notice('bot', '05:00:00', 'Elon Musk is paused because its Codex session could not be migrated: rollout missing\nRestore the rollout in the original Codex home.')
+  assert.deepEqual(items([failure('bot', '04:51:39'), paused]).map((it) => it.type), ['fail', 'line'])
+})
+
+test('a line is found again by any of its failures when one joins at either end', () => {
+  const [a, b, c] = [failure('bot', '04:51:39'), failure('bot', '05:16:53'), failure('bot', '05:40:18')]
+  const talk = say('me', '04:00:00')
+  // Older pages: the line keeps its key, so paging sees the row stay put.
+  assert.deepEqual(items([talk, a, b]).map((it) => it.key), items([talk, b]).map((it) => it.key))
+  // A new failure moves the key; the line is still the one holding b.
+  const live = items([talk, b, c])
+  assert.notEqual(live[1].key, items([talk, b])[1].key)
+  assert.equal(rowIndexOf(live, keyOf(b)), 1)
+  assert.equal(rowIndexOf(items([talk, a, b, c]), keyOf(a)), 1)
 })
 
 test("a line's reason is the error's last line, without retry categories, the agent prefix or the hint", () => {
@@ -57,12 +73,5 @@ test("a line's reason is the error's last line, without retry categories, the ag
   assert.equal(
     failureReason(`Trouble Maker could not run on local codex: local codex failed (exit 1): {"error":{"message":"All target providers failed.","target_providers":["openai"],"atte\n${HINT}`),
     'All target providers failed.',
-  )
-})
-
-test('an opened failure reads as the error and the hint', () => {
-  assert.equal(
-    failureDetail(REFUSED),
-    `PR Summary Bot could not run on local claude: local claude failed (exit 1): API Error: Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)\n${HINT}`,
   )
 })

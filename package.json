@@ -10,7 +10,7 @@
   "description": "Where agent teams gather. Cross-platform team chat with AI agents as first-class participants.",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.9.0"
   },
   "repository": {
     "type": "git",
@@ -152,7 +152,9 @@
       "electron/**/*",
       "build/icon.png",
       "build/tray-template*.png",
-      "package.json"
+      "package.json",
+      "!node_modules/sharp/**/*",
+      "!node_modules/@img/**/*"
     ],
     "directories": {
       "output": "release",

@@ -45,6 +45,11 @@ interface State {
 /** Thrown for a request queued in one workspace once another is active. */
 const SWITCHED = new Error('workspace changed')
 
+/** A load still unanswered by then fails: every later request waits behind
+ *  it, and every agent's avatar waits for it (`ready`). A stalled connection
+ *  never answers, and the looks are a few KB. */
+const LOAD_TIMEOUT_MS = 15_000
+
 /** Importing the engine builds its tables in one long task. Once an agent is
  *  known to wear a look, that task runs while the page is idle rather than
  *  during the navigation that first shows a bloub. */
@@ -102,7 +107,7 @@ export const useBloubLooks = create<State>((set, get) => {
       const since = writes
       try {
         const { avatars: sent } = await enqueue(() =>
-          http<{ avatars: Record<string, Omit<BloubLook, 'accessories'> & { accessories?: string[] }> }>('/fork/bloub-avatars'))
+          http<{ avatars: Record<string, Omit<BloubLook, 'accessories'> & { accessories?: string[] }> }>('/fork/bloub-avatars', { signal: AbortSignal.timeout(LOAD_TIMEOUT_MS) }))
         if (writes === since) {
           // A server from before accessories sends looks without them. The apps
           // carry their own web build, so a newer app meets such a server.

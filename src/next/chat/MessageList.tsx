@@ -33,7 +33,7 @@ import { agentRef } from '../agentRefs'
 import { Avatar } from '../ui/Avatar'
 import { IconButton, INERT, Menu, Spinner, useCoarse, useMenu, type MenuEntry } from '../ui/primitives'
 import { IAlert, IArrowDown, IArrowUp, ICheck, IChevronRight, ICopy, IDownload, IFile, IMore, IReply, ISpark, IThread, IWhisper } from '../ui/icons'
-import { createdAt, floatingDay, loadOlderUntilShown, type DayPill, type Item, type Pos, type Stamp } from './model'
+import { createdAt, floatingDay, keyOf, loadOlderUntilShown, rowIndexOf, rowMessages, type DayPill, type Item, type Pos, type Stamp } from './model'
 import { failureDetail, failureReason, failureText } from './failures'
 import { authorOf } from './deletedAuthor'
 import { NO_ANSWERS, roomTalk, transcriptItems, transcriptKeys } from './cardAnswers'
@@ -546,8 +546,9 @@ function AnswerLine({ msg, author, rise, hl }: { msg: Message; author: Participa
   )
 }
 
-/** The failure lines the viewer opened, by key: the transcript unmounts rows
- *  that scroll away, and one that comes back stays open. */
+/** The failures (keyOf) of the lines the viewer opened: the transcript
+ *  unmounts rows that scroll away, and a line remounts under a new key when a
+ *  failure joins it, so a line stays open while any of its failures is here. */
 const openFailures = new Set<string>()
 
 /** One agent's engine failures in a row (buildItems), as one line: who, how
@@ -556,7 +557,7 @@ const openFailures = new Set<string>()
 function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; author: Participant | undefined }) {
   const nt = useNT()
   const locale = useLocale()
-  const [open, setOpen] = useState(() => openFailures.has(item.key))
+  const [open, setOpen] = useState(() => item.msgs.some((m) => openFailures.has(keyOf(m))))
   // Only a click plays the entrance; a line that comes back open is drawn at once.
   const [clicked, setClicked] = useState(false)
   const texts = item.msgs.map((m) => failureText(m) ?? '')
@@ -564,8 +565,10 @@ function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; 
   const first = createdAt(item.msgs[0])
   const reason = failureReason(texts[n - 1])
   const toggle = () => {
-    if (open) openFailures.delete(item.key)
-    else openFailures.add(item.key)
+    for (const m of item.msgs) {
+      if (open) openFailures.delete(keyOf(m))
+      else openFailures.add(keyOf(m))
+    }
     setOpen(!open)
     setClicked(true)
   }
@@ -833,12 +836,13 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
   // Virtuoso keeps its scroll anchor on prepend only if firstItemIndex drops
   // by exactly the number of rows added above. Items are a filtered view of
   // the store, so anchor on the first row we ever showed and count how far
-  // it has moved down.
+  // it has moved down. The row is found by a message of it: a work run or a
+  // failure line changes its key as messages join it.
   const anchorKey = useRef<string | null>(null)
-  if (anchorKey.current === null && items.length > 0) anchorKey.current = items[0].key
-  let anchorIndex = anchorKey.current ? items.findIndex((it) => it.key === anchorKey.current) : 0
+  if (anchorKey.current === null && items.length > 0) anchorKey.current = keyOf(rowMessages(items[0])[0])
+  let anchorIndex = anchorKey.current ? rowIndexOf(items, anchorKey.current) : 0
   if (anchorIndex < 0) {
-    anchorKey.current = items[0]?.key ?? null
+    anchorKey.current = items[0] ? keyOf(rowMessages(items[0])[0]) : null
     anchorIndex = 0
   }
   const firstItemIndex = VIRTUOSO_FIRST_INDEX_BASE - anchorIndex

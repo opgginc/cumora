@@ -818,8 +818,9 @@
 .nx-fail__pill svg { flex: none; width: 14px; height: 14px; }
 .nx-fail__pill > svg:first-child { color: var(--destructive); }
 .nx-fail__pill > span { flex: none; white-space: nowrap; }
-/* The empty alternative keeps screen readers from reading each dot. */
-.nx-fail__pill > span + span::before { content: "·" / ""; margin-right: 4px; }
+/* The empty alternative keeps screen readers from reading each dot; an engine
+   without the syntax drops that declaration and keeps the plain one. */
+.nx-fail__pill > span + span::before { content: "·"; content: "·" / ""; margin-right: 4px; }
 .nx-fail__pill b { font-weight: 500; color: var(--foreground); }
 /* Mono reads larger than the sans beside it, so the times drop a step, like .nx-agenda__head. */
 .nx-fail__pill .nx-mono { font-size: var(--text-micro); }

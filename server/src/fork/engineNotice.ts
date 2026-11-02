@@ -9,17 +9,23 @@
  * which engineDiagnosticText keeps one per line. In a notice they are noise:
  * one Connection refused outage printed "unknown" ten times and
  * "server_error" once above the actual error. So only the notice drops them.
- * src/next/chat/failures.ts reads notices posted before this with the same rule.
+ *
+ * src/next/chat/failures.ts applies the same rule to notices posted before
+ * this. The server image has no src/ and the web build has no server/, so
+ * each keeps a copy, and server/src/__tests__/fork-engine-notice.test.ts pins
+ * the two together.
  */
 
-/** A bare error category: one lowercase word or snake_case name. */
+/** A bare error category, one per Claude Code retry: one lowercase word or snake_case name. */
 const CATEGORY = /^[a-z]+(?:_[a-z]+)*$/
+/** The error's opening up to the engine's exit: "local claude failed (exit 1): ". */
+const EXIT = /^[^\n]*?\bfailed \(exit -?\d+\): /
 
 /** `error` without lines that are a bare error category or that it already
- *  showed. The `local <engine> failed (exit N): ` prefix stays and joins the
- *  first line that is left. An error made only of such lines comes back as it was. */
+ *  showed. The exit prefix stays and joins the first line that is left. An
+ *  error made only of such lines comes back as it was. */
 export function noticeDetail(error: string): string {
-  const prefix = /^local \S+ failed \(exit -?\d+\): /.exec(error)?.[0] ?? ''
+  const prefix = EXIT.exec(error)?.[0] ?? ''
   const seen = new Set<string>()
   const lines = error.slice(prefix.length).split('\n').filter((raw) => {
     const line = raw.trim()
