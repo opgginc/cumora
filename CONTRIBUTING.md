@@ -10,14 +10,14 @@ project's [MIT License](LICENSE).
 ## Getting set up
 
 You need **Postgres** and **Redis** running locally. Node floors differ by
-artifact. The root `package.json` `engines` field is `>=20`, which is the
-install floor the production image proves. npm is not run with
+artifact. The root `package.json` `engines` field is `>=20.9.0`, the floor of
+`sharp` (agent portraits), which the production image proves. npm is not run with
 `engine-strict`, so a dependency's own engines field warns instead of
 failing `npm ci`.
 
 | Artifact | Node |
 | --- | --- |
-| Root `engines` | `>=20` |
+| Root `engines` | `>=20.9.0` |
 | CI typecheck, test, and deploy (`pr.yml`, `build.yml`, `deploy.yml`, `production-readback.yml`) | 24 |
 | `publish.yml` | 20 |
 | `server/docker/cumora-server.Dockerfile`, `server/docker/agent-computer.Dockerfile` | `node:20-bookworm-slim` |

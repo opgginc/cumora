@@ -36,25 +36,24 @@ function AvatarImpl({ p, size = 32, presence = false, className }: Props) {
   const look = useBloubLooks((s) => (p.kind === 'agent' ? s.byId[p.id] : undefined))
   // Until the looks load, an agent may still turn out to wear a bloub: its
   // portrait would be a download nobody sees, on the connection the room's
-  // messages need. It waits as a blank disc.
+  // messages need. It waits as a blank disc that still shows its presence.
   const unknown = useBloubLooks((s) => p.kind === 'agent' && !s.ready)
   // A bloub plays the agent's state itself, so it carries no presence dot or ring.
   if (look) return <BloubAvatar agentId={p.id} look={look} size={size} className={className} />
-  if (unknown) return <span className={className ? `nx-avatar ${className}` : 'nx-avatar'} style={{ width: size, height: size, background: 'var(--muted)' }} aria-hidden />
-  return <Portrait p={p} size={size} presence={presence} className={className} />
+  return <Portrait p={p} size={size} presence={presence} className={className} blank={unknown} />
 }
 
-function Portrait({ p, size = 32, presence = false, className }: Props) {
+function Portrait({ p, size = 32, presence = false, className, blank = false }: Props & { blank?: boolean }) {
   // The <img> is a portrait's one download, kept by the browser's cache: an
   // agent's new portrait gets a new storage key, so its URL changes with it.
-  const src = p.avatarUrl ?? null
+  const src = blank ? null : (p.avatarUrl ?? null)
   const { showImg, imgKey, onError } = useAvatarImg(src)
   const state = usePresence(presence ? p : undefined)
   const dot = Math.max(8, Math.round(size * 0.26))
   const style: CSSProperties = {
     width: size,
     height: size,
-    background: showImg ? 'var(--muted)' : p.avatarBg,
+    background: showImg || blank ? 'var(--muted)' : p.avatarBg,
     fontSize: Math.max(11, Math.round(size * 0.4)),
   }
   return (
@@ -62,7 +61,7 @@ function Portrait({ p, size = 32, presence = false, className }: Props) {
       {showImg ? (
         <img key={imgKey} src={src ?? ''} alt="" loading={AVATAR_IMG_LOADING} decoding="async" onError={onError} draggable={false} />
       ) : (
-        p.initial
+        !blank && p.initial
       )}
       {presence && state === 'live' && <span className="nx-avatar__live" />}
       {presence && (state === 'avail' || state === 'waiting') && (

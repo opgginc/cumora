@@ -947,19 +947,19 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
   const pendingJump = useApp((s) => s.pendingJumpMessageId)
   useEffect(() => {
     if (!pendingJump) return
-    let index = items.findIndex((it) => (it.type === 'fail' ? it.msgs.some((m) => m.id === pendingJump) : it.type !== 'work' && it.msg.id === pendingJump))
+    let index = items.findIndex((it) => it.type !== 'work' && rowMessages(it).some((m) => m.id === pendingJump))
     if (index < 0) {
       // A Calendar firing has no line of its own (buildItems leaves it out),
       // so a jump to one lands on what came after it: what the run produced.
       const hidden = raw.find((m) => m.id === pendingJump)
       if (!hidden) return
       const t = createdAt(hidden).getTime()
-      index = items.findIndex((it) => createdAt(it.type === 'work' || it.type === 'fail' ? it.msgs[0] : it.msg).getTime() >= t)
+      index = items.findIndex((it) => createdAt(rowMessages(it)[0]).getTime() >= t)
       if (index < 0) index = items.length - 1
       if (index < 0) return
     }
     const target = items[index]
-    const targetId = target.type === 'work' || target.type === 'fail' ? target.msgs[0].id : target.msg.id
+    const targetId = rowMessages(target)[0].id
     useApp.getState().clearPendingJump()
     ref.current?.scrollToIndex({ index, align: 'center', behavior: 'smooth' })
     const deadline = Date.now() + 1200
