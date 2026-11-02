@@ -90,9 +90,10 @@ export function buildItems(messages: Message[], meId: string | null, isAnswer: (
     if (failureText(m) !== null) {
       // Keyed by its newest failure, unlike a work run: older pages join a
       // failure line at its top (one routine fails all through an outage), and
-      // loadOlderUntilShown pages on while the first row's key moves. A new
-      // failure moves the key instead, so what must find the line again (the
-      // list's scroll anchor, an opened line) goes by its messages (rowIndexOf).
+      // a key that holds then keeps the row mounted and loadOlderUntilShown
+      // from counting the join as a change above. A new failure moves the key
+      // instead, so what must find the line again (the list's scroll anchor,
+      // an opened line) goes by its messages (rowIndexOf).
       if (last?.type === 'fail' && last.authorId === m.authorId && day === null) {
         last.msgs.push(m)
         last.key = `f-${keyOf(m)}`

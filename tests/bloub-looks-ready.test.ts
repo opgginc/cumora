@@ -56,11 +56,22 @@ test('a load that answers or fails stops the avatars waiting', async () => {
   assert.deepEqual(failed.looks().byId, {})
 })
 
-test('the request carries a deadline', async () => {
-  let signal: unknown
-  const s = setup(async (_path, init) => { signal = init?.signal; return { avatars: {} } })
-  await s.looks().load()
-  assert.ok(signal instanceof AbortSignal)
+test('loads and picks carry a deadline, also where AbortSignal.timeout is missing (iOS 15)', async () => {
+  const timeout = AbortSignal.timeout
+  // @ts-expect-error iOS 15's WebKit has no AbortSignal.timeout
+  AbortSignal.timeout = undefined
+  try {
+    const signals: unknown[] = []
+    const s = setup(async (_path, init) => { signals.push(init?.signal); return { avatars: { bot: LOOK } } })
+    await s.looks().load()
+    await s.looks().save('bot', { shape: 'round', color: 'bleu', accessories: [] })
+    assert.equal(s.looks().ready, true)
+    assert.deepEqual(Object.keys(s.looks().byId), ['bot'])
+    assert.equal(signals.length, 2)
+    assert.ok(signals.every((signal) => signal instanceof AbortSignal))
+  } finally {
+    AbortSignal.timeout = timeout
+  }
 })
 
 test('a pick made while a load is out keeps the pick, and the load still settles', async () => {

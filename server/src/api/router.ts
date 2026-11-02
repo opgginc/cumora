@@ -3271,9 +3271,8 @@ export async function generateAndPersistAvatar(args: {
   }
 
   // Fork: stored at the size the apps draw it (fork/portrait.ts).
-  const { portraitWebp } = await import('../fork/portrait.js')
-  const key = `avatars/avatar-${id}-${randomUUID().slice(0, 8)}.webp`
-  const url = await storage.put(key, await portraitWebp(imageBuf), 'image/webp')
+  const { storePortrait } = await import('../fork/portrait.js')
+  const url = await storePortrait(id, imageBuf)
   await withOutboxTransaction(async (client) => {
     await client.query(
       `UPDATE participants SET avatar_url = $2 WHERE id = $1 AND company_id = $3`,

@@ -13,6 +13,9 @@ test('a wide PNG becomes a square 256 px WebP', async () => {
   assert.deepEqual({ format: meta.format, width: meta.width, height: meta.height }, { format: 'webp', width: 256, height: 256 })
 })
 
-test('bytes that are not an image are refused', async () => {
+test('bytes that are not a PNG, JPEG, GIF or WebP are refused before decoding', async () => {
   await assert.rejects(portraitWebp(Buffer.from('not an image')))
+  // An agent can point `cumora avatar set` at any image URL; libvips would render this.
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64"/></svg>')
+  await assert.rejects(portraitWebp(svg), /not a PNG, JPEG, GIF or WebP/)
 })

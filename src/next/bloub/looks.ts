@@ -45,10 +45,23 @@ interface State {
 /** Thrown for a request queued in one workspace once another is active. */
 const SWITCHED = new Error('workspace changed')
 
-/** A load still unanswered by then fails: every later request waits behind
- *  it, and every agent's avatar waits for it (`ready`). A stalled connection
- *  never answers, and the looks are a few KB. */
-const LOAD_TIMEOUT_MS = 15_000
+/** A request still unanswered by then fails: every later request waits behind
+ *  it, and every agent's avatar waits for the first load (`ready`). A stalled
+ *  connection never answers, and the looks are a few KB. */
+const REQUEST_TIMEOUT_MS = 15_000
+
+/** Runs a request that gives up after REQUEST_TIMEOUT_MS. A controller and a
+ *  timer, not AbortSignal.timeout: the iOS app still runs on iOS 15, whose
+ *  WebKit lacks it. */
+async function withDeadline<T>(request: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    return await request(controller.signal)
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 /** Importing the engine builds its tables in one long task. Once an agent is
  *  known to wear a look, that task runs while the page is idle rather than
@@ -106,8 +119,8 @@ export const useBloubLooks = create<State>((set, get) => {
     async load() {
       const since = writes
       try {
-        const { avatars: sent } = await enqueue(() =>
-          http<{ avatars: Record<string, Omit<BloubLook, 'accessories'> & { accessories?: string[] }> }>('/fork/bloub-avatars', { signal: AbortSignal.timeout(LOAD_TIMEOUT_MS) }))
+        const { avatars: sent } = await enqueue(() => withDeadline((signal) =>
+          http<{ avatars: Record<string, Omit<BloubLook, 'accessories'> & { accessories?: string[] }> }>('/fork/bloub-avatars', { signal })))
         if (writes === since) {
           // A server from before accessories sends looks without them. The apps
           // carry their own web build, so a newer app meets such a server.
@@ -137,7 +150,7 @@ export const useBloubLooks = create<State>((set, get) => {
       })
       const path = `/fork/bloub-avatars/${encodeURIComponent(agentId)}`
       try {
-        await enqueue(() => http(path, pick ? { method: 'PUT', body: JSON.stringify(pick) } : { method: 'DELETE' }))
+        await enqueue(() => withDeadline((signal) => http(path, pick ? { method: 'PUT', body: JSON.stringify(pick), signal } : { method: 'DELETE', signal })))
       } catch (e) {
         if (e === SWITCHED) return
         void get().load()

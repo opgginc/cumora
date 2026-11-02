@@ -3831,12 +3831,8 @@ async function setAgentAvatarFromUrl(args: {
 
   // Fork: stored at the size the apps draw it (fork/portrait.ts), so every
   // portrait is a WebP whatever the source format was.
-  const { portraitWebp } = await import('../fork/portrait.js')
-  const portrait = await portraitWebp(buf)
-  const { storage } = await import('../storage.js')
-  const { randomUUID } = await import('node:crypto')
-  const key = `avatars/avatar-${args.agentId}-${randomUUID().slice(0, 8)}.webp`
-  const url = await storage.put(key, portrait, 'image/webp')
+  const { storePortrait } = await import('../fork/portrait.js')
+  const url = await storePortrait(args.agentId, buf)
 
   await withOutboxTransaction(async (client) => {
     await client.query(
