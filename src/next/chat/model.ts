@@ -1,5 +1,6 @@
 import { isCalendarNotice } from '@/lib/conversationRow'
 import type { Message } from '@/types'
+import { failureText } from './failures'
 
 /** Messages a bubble can show. Tool/thought rows are work, not conversation. */
 const WORK_KINDS = new Set<Message['kind']>(['tool', 'thought'])
@@ -27,6 +28,8 @@ export type Stamp = 'turn' | 'slot' | 'hidden'
 export type Item =
   | { type: 'msg'; key: string; msg: Message; mine: boolean; pos: Pos; stamp: Stamp; day: Date | null; pause: number | null; at: Date }
   | { type: 'work'; key: string; authorId: string; msgs: Message[]; day: Date | null; pause: number | null; at: Date }
+  /** One agent's engine-failure notices in a row (chat/failures.ts), drawn as one line. */
+  | { type: 'fail'; key: string; authorId: string; msgs: Message[]; day: Date | null; pause: number | null; at: Date }
   | { type: 'line'; key: string; msg: Message; day: Date | null; pause: number | null; at: Date }
   /** A reply that answered a question card (chat/cards.ts), drawn as one line. */
   | { type: 'answer'; key: string; msg: Message; day: Date | null; pause: number | null; at: Date }
@@ -58,7 +61,9 @@ function sameDay(a: Date, b: Date): boolean {
  * STAMP_GAP_MIN past the last time shown, so a burst gets one time, not one per line.
  * Calendar firings are left out: the room panel's Routines tab tracks runs. A
  * reply that answered a question card (`isAnswer`) is an answer line, which
- * ends the turn like any line.
+ * ends the turn like any line. An agent's engine failures with nothing drawn
+ * between them are one failure line, across pauses (an outage fails each
+ * routine run again half an hour later) but not across days.
  */
 export function buildItems(messages: Message[], meId: string | null, isAnswer: (m: Message) => boolean): Item[] {
   const out: Item[] = []
@@ -79,6 +84,20 @@ export function buildItems(messages: Message[], meId: string | null, isAnswer: (
         last.at = at
       } else {
         out.push({ type: 'work', key: `w-${keyOf(m)}`, authorId: m.authorId, msgs: [m], day, pause, at })
+      }
+      continue
+    }
+    if (failureText(m) !== null) {
+      // Keyed by its newest failure, unlike a work run: older pages join a
+      // failure line at its top (one routine fails all through an outage), and
+      // the key must hold then for the list's scroll anchor (MessageList) and
+      // for loadOlderUntilShown, which pages on while the first row's key moves.
+      if (last?.type === 'fail' && last.authorId === m.authorId && day === null) {
+        last.msgs.push(m)
+        last.key = `f-${keyOf(m)}`
+        last.at = at
+      } else {
+        out.push({ type: 'fail', key: `f-${keyOf(m)}`, authorId: m.authorId, msgs: [m], day, pause, at })
       }
       continue
     }

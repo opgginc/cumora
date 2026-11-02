@@ -166,6 +166,8 @@ export const zhCN: Partial<Record<keyof typeof en, string>> = {
   'msg.replies': '{n} 条回复',
   'msg.toolCount': '{n} 个步骤',
   'msg.thoughtCount': '{n} 条笔记',
+  'msg.failOnce': '运行失败',
+  'msg.failTimes': '运行失败 {n} 次',
   'msg.whisper': '{a} 和 {b} 私下聊了 {n} 条消息',
   'msg.latest': '跳到最新',
 

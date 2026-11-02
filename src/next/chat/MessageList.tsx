@@ -27,13 +27,14 @@ import type { Message, Participant } from '@/types'
 import { haptic } from '../haptics'
 import { useNT, type NT } from '../i18n'
 import { href, navigate, getRoute, withRoute } from '../router'
-import { bytes, clock, dayLabel, exactTime, fullDate, pauseLength, relative, startOfDay } from '../format'
+import { bytes, clock, clockRange, dayLabel, exactTime, fullDate, pauseLength, relative, startOfDay } from '../format'
 import { HOLD_MS, useCopy, useHold } from '../hooks'
 import { agentRef } from '../agentRefs'
 import { Avatar } from '../ui/Avatar'
 import { IconButton, INERT, Menu, Spinner, useCoarse, useMenu, type MenuEntry } from '../ui/primitives'
-import { IArrowDown, IArrowUp, ICheck, ICopy, IDownload, IFile, IMore, IReply, ISpark, IThread, IWhisper } from '../ui/icons'
+import { IAlert, IArrowDown, IArrowUp, ICheck, IChevronRight, ICopy, IDownload, IFile, IMore, IReply, ISpark, IThread, IWhisper } from '../ui/icons'
 import { createdAt, floatingDay, loadOlderUntilShown, type DayPill, type Item, type Pos, type Stamp } from './model'
+import { failureDetail, failureReason, failureText } from './failures'
 import { authorOf } from './deletedAuthor'
 import { NO_ANSWERS, roomTalk, transcriptItems, transcriptKeys } from './cardAnswers'
 import { useCardAnswers, useCards, useQuestionOf, useWaitingCard } from './cards'
@@ -545,6 +546,52 @@ function AnswerLine({ msg, author, rise, hl }: { msg: Message; author: Participa
   )
 }
 
+/** The failure lines the viewer opened, by key: the transcript unmounts rows
+ *  that scroll away, and one that comes back stays open. */
+const openFailures = new Set<string>()
+
+/** One agent's engine failures in a row (buildItems), as one line: who, how
+ *  many times and when, and the last line of the latest error. A click opens
+ *  every failure's text. */
+function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; author: Participant | undefined }) {
+  const nt = useNT()
+  const locale = useLocale()
+  const [open, setOpen] = useState(() => openFailures.has(item.key))
+  // Only a click plays the entrance; a line that comes back open is drawn at once.
+  const [clicked, setClicked] = useState(false)
+  const texts = item.msgs.map((m) => failureText(m) ?? '')
+  const n = item.msgs.length
+  const first = createdAt(item.msgs[0])
+  const reason = failureReason(texts[n - 1])
+  const toggle = () => {
+    if (open) openFailures.delete(item.key)
+    else openFailures.add(item.key)
+    setOpen(!open)
+    setClicked(true)
+  }
+  return (
+    <div id={`m-${item.msgs[0].id}`} className="nx-line nx-fail">
+      <button type="button" className="nx-fail__pill" aria-expanded={open} onClick={toggle}>
+        <IAlert />
+        <span><b>{author?.name ?? nt('msg.someone')}</b> {n === 1 ? nt('msg.failOnce') : nt('msg.failTimes', { n })}</span>
+        <span className="nx-mono">{n === 1 ? clock(first, locale) : clockRange(first, item.at, locale)}</span>
+        {reason && <span className="nx-fail__why">{reason}</span>}
+        <IChevronRight className="nx-fail__chev" />
+      </button>
+      {open && (
+        <ol className="nx-fail__list" data-fresh={clicked || undefined}>
+          {item.msgs.map((m, i) => (
+            <li key={m.id}>
+              <span className="nx-mono">{clock(createdAt(m), locale)}</span>
+              <p>{failureDetail(texts[i])}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  )
+}
+
 /** Room header height: it covers the top of the scroller. */
 const HEADER_PX = 56
 
@@ -896,19 +943,19 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
   const pendingJump = useApp((s) => s.pendingJumpMessageId)
   useEffect(() => {
     if (!pendingJump) return
-    let index = items.findIndex((it) => it.type !== 'work' && it.msg.id === pendingJump)
+    let index = items.findIndex((it) => (it.type === 'fail' ? it.msgs.some((m) => m.id === pendingJump) : it.type !== 'work' && it.msg.id === pendingJump))
     if (index < 0) {
       // A Calendar firing has no line of its own (buildItems leaves it out),
       // so a jump to one lands on what came after it: what the run produced.
       const hidden = raw.find((m) => m.id === pendingJump)
       if (!hidden) return
       const t = createdAt(hidden).getTime()
-      index = items.findIndex((it) => createdAt(it.type === 'work' ? it.msgs[0] : it.msg).getTime() >= t)
+      index = items.findIndex((it) => createdAt(it.type === 'work' || it.type === 'fail' ? it.msgs[0] : it.msg).getTime() >= t)
       if (index < 0) index = items.length - 1
       if (index < 0) return
     }
     const target = items[index]
-    const targetId = target.type === 'work' ? target.msgs[0].id : target.msg.id
+    const targetId = target.type === 'work' || target.type === 'fail' ? target.msgs[0].id : target.msg.id
     useApp.getState().clearPendingJump()
     ref.current?.scrollToIndex({ index, align: 'center', behavior: 'smooth' })
     const deadline = Date.now() + 1200
@@ -951,8 +998,9 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
       : it.pause !== null
         ? <div className="nx-pause"><span>{pauseText(nt, it.pause)}</span></div>
         : null
-    const fresh = isFresh(seen, it.key) && !(it.type !== 'work' && streamed.has(it.msg.id))
+    const fresh = isFresh(seen, it.key) && !(it.type !== 'work' && it.type !== 'fail' && streamed.has(it.msg.id))
     if (it.type === 'work') return <>{sep}<WorkChip item={it} author={authorOf(byId, it.authorId, nt)} /></>
+    if (it.type === 'fail') return <>{sep}<FailureLine item={it} author={authorOf(byId, it.authorId, nt)} /></>
     if (it.type === 'answer') return <>{sep}<AnswerLine msg={it.msg} author={authorOf(byId, it.msg.authorId, nt)} rise={fresh} hl={it.key === currentHit ? 'current' : hitSet.has(it.key) ? 'match' : undefined} /></>
     if (it.type === 'line') {
       return (
