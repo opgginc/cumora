@@ -118,6 +118,7 @@ export const useBloubLooks = create<State>((set, get) => {
 
     async load() {
       const since = writes
+      const epoch = useAuth.getState().contextEpoch
       try {
         const { avatars: sent } = await enqueue(() => withDeadline((signal) =>
           http<{ avatars: Record<string, Omit<BloubLook, 'accessories'> & { accessories?: string[] }> }>('/fork/bloub-avatars', { signal })))
@@ -135,6 +136,10 @@ export const useBloubLooks = create<State>((set, get) => {
         if (e === SWITCHED) return
         console.warn('[next] bloub avatars load failed', e)
       }
+      // A request only learns of a switch when it answers (enqueue's second
+      // check); one that failed after it belongs to the old workspace, whose
+      // avatars are gone, and must not end the new one's wait.
+      if (useAuth.getState().contextEpoch !== epoch) return
       // Loaded or not, avatars stop waiting: after a failed load every agent shows its portrait.
       if (!get().ready) set({ ready: true })
     },

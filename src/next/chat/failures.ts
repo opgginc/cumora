@@ -20,8 +20,10 @@ const RUN_FAILED = /^[^\n]* could not run on local \S+: /
 // these lines out of new notices. The server image has no src/ and this build
 // has no server/, so each keeps a copy, and
 // server/src/__tests__/fork-engine-notice.test.ts pins the two together.
-/** A bare error category, one per Claude Code retry: one lowercase word or snake_case name. */
-const CATEGORY = /^[a-z]+(?:_[a-z]+)*$/
+/** An error category Claude Code puts on each retry and on its own error
+ *  message, alone on a line (the names its api_retry events use). Only these:
+ *  any other one-word line, such as "killed" or "timeout", is the error itself. */
+const CATEGORY = /^(?:unknown|rate_limit|overloaded|server_error|authentication_failed|cloud_credential_error)$/
 /** The error's opening up to the engine's exit: "… failed (exit 1): ". */
 const EXIT = /^[^\n]*?\bfailed \(exit -?\d+\): /
 

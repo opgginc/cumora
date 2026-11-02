@@ -42,6 +42,11 @@ test('errors without categories and errors made only of them come back as they w
   for (const error of [ERRORS.killed, ERRORS.json, ERRORS.bare]) assert.equal(noticeDetail(error), error)
 })
 
+test("a one-word line that is not a Claude Code category is the error and stays", () => {
+  const error = `local codex failed (exit 137): Running agent turn\nkilled\nunknown`
+  assert.equal(noticeDetail(error), `local codex failed (exit 137): Running agent turn\nkilled`)
+})
+
 test('an old notice opened in the transcript reads as the daemon posts it now', () => {
   const notice = (error: string) => `PR Summary Bot could not run on local claude: ${error}\n${HINT}`
   for (const [name, error] of Object.entries(ERRORS)) {

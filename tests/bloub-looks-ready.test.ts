@@ -118,3 +118,14 @@ test('a load that never answers gives up at the deadline, and the avatars stop w
   assert.equal(aborted, true)
   assert.equal(s.looks().ready, true)
 })
+
+test("a load from before a switch that fails afterwards leaves the new workspace's avatars waiting", async () => {
+  const fails: Array<(error: Error) => void> = []
+  const s = setup(() => new Promise((_resolve, reject) => { fails.push(reject) }))
+  const old = s.looks().load()
+  await settle()
+  s.useAuth.setState({ contextEpoch: 1 })
+  fails[0](new Error('offline'))
+  await old
+  assert.equal(s.looks().ready, false)
+})
