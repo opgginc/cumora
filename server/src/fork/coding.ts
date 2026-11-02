@@ -397,10 +397,10 @@ async function agentWorkspaces(): Promise<string[]> {
 export function wakeOf(t: CodingThread, room: string): Wake {
   const where = `on the T3 MCP server ${t.server} (threadId ${t.threadId})`
   const question = t.status === 'question'
-  // T3's tool descriptions tell an agent to name a thread by its `link`, but
-  // the owner finds a thread in T3 by its title, its server and its project,
-  // so the room gets those and no link.
-  const ownersCall = `When the thread waits for an answer that is the owner's to give, tell this room its title, its T3 server ${t.server} and its project or repository instead of a link to it.`
+  // T3's tool descriptions tell an agent to name a thread by its `link`, and a
+  // title is agent text that can quote any room. So the room hears only the
+  // server and the project; the Coding tab shows the title to owners and admins.
+  const ownersCall = "If the owner must answer, do not post the thread's title or a link to it: tell this room the T3 server's name and the project or repository, and that it is in your Coding tab."
   return {
     companyId: t.companyId,
     assigneeId: t.agentId,
@@ -412,11 +412,12 @@ export function wakeOf(t: CodingThread, room: string): Wake {
     title: question ? 'A T3 Code thread needs an answer' : `A T3 Code thread is ${t.status}`,
     description: `The T3 Code thread ${t.threadId} on ${t.server}, whose title carries your mark, ${question ? 'waits for an answer' : `is ${t.status}`}.`,
     // The computer's daemon shows a due wake as one line cut at DIGEST_PREVIEW
-    // characters (./messageBody.ts), so the secret guard comes right after the
-    // read. A T3 request id nests other ids and runs to hundreds of characters,
-    // so the agent gets it from action "list" rather than from this prompt.
+    // characters (./messageBody.ts). The secret guard comes right after the
+    // read, and the question's prompt fits whole even with T3's longest thread
+    // ids (mcp:launch:<64 hex>). A T3 request id nests other ids and runs to
+    // hundreds of characters, so the agent gets it from action "list" instead.
     agentPrompt: question
-      ? `Read its question with t3_pending_request (action "list", then "read") ${where}. Never answer with a secret or a credential unless a person in this room tells you to. Answer it with t3_pending_request (action "respond") when the answer is yours to give, or ask the people in this room. ${ownersCall}`
+      ? `Read its question with t3_pending_request (action "list", then "read") ${where}. Never answer with a secret or a credential unless a person in this room tells you to. Answer it with action "respond" when the answer is yours to give, or ask this room. ${ownersCall}`
       : `Read how it went with t3_thread_read ${where} and tell this room in a short message, unless you already did.`,
     scheduledFor: t.updatedAt,
   }

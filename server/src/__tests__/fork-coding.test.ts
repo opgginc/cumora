@@ -371,11 +371,14 @@ test('a wake names T3’s current tools, keeps the secret guard in the line the 
   }
   const asked = wakeOf(copy, 'room-1')
   assert.match(asked.agentPrompt, /t3_pending_request \(action "list", then "read"\) on the T3 MCP server t3code-m4 \(threadId mcp:launch:a{64}\)/)
-  assert.match(asked.agentPrompt, /t3_pending_request \(action "respond"\)/)
-  for (const word of ['owner', 'title', 'project', 'link']) assert.ok(asked.agentPrompt.includes(word), `a question the owner must answer is named by what finds it in T3: ${word}`)
+  assert.match(asked.agentPrompt, /action "respond"/)
+  // The thread's title is agent text that can quote any room.
+  assert.doesNotMatch(asked.agentPrompt, /tell this room[^.]*title/, 'the room is not told the title')
+  for (const word of ['owner', 'project', 'Coding tab']) assert.ok(asked.agentPrompt.includes(word), `the owner learns where to find the thread: ${word}`)
   // The daemon shows a due wake as this line, cut at DIGEST_PREVIEW (agents/computer/daemon.ts).
   const line = `[calendar:due] ${[asked.title, asked.agentPrompt].filter(Boolean).join(' — ')}`.replace(/\s+/g, ' ').slice(0, DIGEST_PREVIEW)
   assert.ok(line.includes('Never answer with a secret or a credential unless a person in this room tells you to.'), `the guard survives the cut: ${line}`)
+  assert.ok(line.includes('Coding tab'), `so does the owner's rule, to its end: ${line}`)
 
   const done = wakeOf({ ...copy, status: 'completed', requestId: null }, 'room-1')
   assert.ok(!done.agentPrompt.includes('owner'), 'a thread at rest asks the owner nothing')
