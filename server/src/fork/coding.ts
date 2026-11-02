@@ -232,6 +232,11 @@ async function connect(server: T3Server): Promise<T3Session> {
   }
 }
 
+/** The ids of the questions a thread waits for. T3 does not list approvals. */
+async function pendingRequestIds(t3: T3Session, threadId: string): Promise<string[]> {
+  return (await t3.call<{ requestIds: string[] }>('t3_pending_request', { action: 'list', threadId })).requestIds
+}
+
 /** Every thread of every project on the server whose title carries a mark.
  *  T3 lists threads per project only, for a caller outside a T3 thread.
  *  Exported for tests, which fake T3 at fetch.
@@ -255,9 +260,7 @@ export async function markedThreads(server: T3Server): Promise<ReadThread[]> {
         for (const t of page.threads) {
           // T3 tells a question by its pending request, not by the thread's
           // status: the run stays running while it waits for the answer.
-          const asked = t.status === 'running'
-            ? (await t3.call<{ requestIds: string[] }>('t3_pending_request', { action: 'list', threadId: t.threadId })).requestIds
-            : []
+          const asked = t.status === 'running' ? await pendingRequestIds(t3, t.threadId) : []
           const pullRequests = (t.pullRequests ?? []).map(({ number, url, state }) => ({ number, url, state }))
           // In toISOString()'s form, which the list compares as text. A time
           // that is no time fails the read here, so it shows under the list.
@@ -294,9 +297,7 @@ export async function threadDetail(server: T3Server, threadId: string, scheme: s
       after = page.nextPosition
     }
     // A pending request may also be an approval, which T3 does not list here.
-    const [requestId] = thread.pendingRequestCount > 0
-      ? (await t3.call<{ requestIds: string[] }>('t3_pending_request', { action: 'list', threadId })).requestIds
-      : []
+    const [requestId] = thread.pendingRequestCount > 0 ? await pendingRequestIds(t3, threadId) : []
     const questions = requestId
       ? (await t3.call<{ questions: T3Question[] }>('t3_pending_request', { action: 'read', threadId, requestId })).questions
       : []
@@ -399,7 +400,7 @@ export function wakeOf(t: CodingThread, room: string): Wake {
   // T3's tool descriptions tell an agent to name a thread by its `link`, but
   // the owner finds a thread in T3 by its title, its server and its project,
   // so the room gets those and no link.
-  const ownersCall = `When the thread waits for an answer or an approval that is the owner's to give, tell this room its title, its T3 server ${t.server} and its project or repository instead of a link to it.`
+  const ownersCall = `When the thread waits for an answer that is the owner's to give, tell this room its title, its T3 server ${t.server} and its project or repository instead of a link to it.`
   return {
     companyId: t.companyId,
     assigneeId: t.agentId,
@@ -410,9 +411,13 @@ export function wakeOf(t: CodingThread, room: string): Wake {
     // shows to owners and admins only. The agent reads the thread itself.
     title: question ? 'A T3 Code thread needs an answer' : `A T3 Code thread is ${t.status}`,
     description: `The T3 Code thread ${t.threadId} on ${t.server}, whose title carries your mark, ${question ? 'waits for an answer' : `is ${t.status}`}.`,
+    // The computer's daemon shows a due wake as one line cut at DIGEST_PREVIEW
+    // characters (./messageBody.ts), so the secret guard comes right after the
+    // read. A T3 request id nests other ids and runs to hundreds of characters,
+    // so the agent gets it from action "list" rather than from this prompt.
     agentPrompt: question
-      ? `Read its question with t3_pending_request (action "read", requestId ${t.requestId}) ${where}. Answer it with t3_pending_request (action "respond") when the answer is yours to give, or ask the people in this room. ${ownersCall} Never answer with a secret or a credential unless a person in this room tells you to.`
-      : `Read how it went with t3_thread_read ${where} and tell this room in a short message, unless you already did. ${ownersCall}`,
+      ? `Read its question with t3_pending_request (action "list", then "read") ${where}. Never answer with a secret or a credential unless a person in this room tells you to. Answer it with t3_pending_request (action "respond") when the answer is yours to give, or ask the people in this room. ${ownersCall}`
+      : `Read how it went with t3_thread_read ${where} and tell this room in a short message, unless you already did.`,
     scheduledFor: t.updatedAt,
   }
 }

@@ -16,6 +16,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DIGEST_PREVIEW } from '../fork/messageBody.js'
 
 // coding.ts finds its T3 tokens relative to the server's cwd when it loads.
 const root = mkdtempSync(join(tmpdir(), 'fork-coding-'))
@@ -356,18 +357,29 @@ test('a poll unlists what a whole read no longer finds, keeps the copy when the 
   assert.deepEqual(store.codingWakesDue(t3.name, ['completed']), [], 'its agent is not woken twice for one rest')
 })
 
-test('a wake names T3’s current tools, has the agent name a thread for the owner without a link, and shows the room none of its text', () => {
+test('a wake names T3’s current tools, keeps the secret guard in the line the daemon shows, and shows the room none of the thread’s text', () => {
+  // The longer of the two thread id forms T3 gives an MCP launch (the other is mcp:<uuid>).
+  const threadId = `mcp:launch:${'a'.repeat(64)}`
+  // A T3 request id nests its turn's id and the provider's request id, each
+  // encoded, before a uuid (IdAllocator in T3's provider-core): about 300 characters.
+  const turn = encodeURIComponent(`provider-turn:provider:codex:native-turn:${'c'.repeat(80)}`)
   const copy = {
-    server: 't3code-m4', threadId: 'mcp:th-1', companyId: 'c1', agentId: 'bot', conversationId: null, title: 'Fix what #general asked',
-    status: 'question', runId: 'run-1', requestId: 'q-1', pullRequests: [], createdAt: '2026-10-20T01:00:00.000Z',
-    updatedAt: '2026-10-20T01:05:00.000Z', settledAt: null,
+    server: 't3code-m4', threadId, companyId: 'c1', agentId: 'bot', conversationId: null, title: 'Fix what #general asked',
+    status: 'question', runId: 'run-1',
+    requestId: `runtime-request:provider:codex:provider-turn:${turn}:native-request:${'d'.repeat(80)}:${'e'.repeat(36)}`,
+    pullRequests: [], createdAt: '2026-10-20T01:00:00.000Z', updatedAt: '2026-10-20T01:05:00.000Z', settledAt: null,
   }
   const asked = wakeOf(copy, 'room-1')
-  assert.match(asked.agentPrompt, /t3_pending_request \(action "read", requestId q-1\) on the T3 MCP server t3code-m4 \(threadId mcp:th-1\)/)
+  assert.match(asked.agentPrompt, /t3_pending_request \(action "list", then "read"\) on the T3 MCP server t3code-m4 \(threadId mcp:launch:a{64}\)/)
   assert.match(asked.agentPrompt, /t3_pending_request \(action "respond"\)/)
+  for (const word of ['owner', 'title', 'project', 'link']) assert.ok(asked.agentPrompt.includes(word), `a question the owner must answer is named by what finds it in T3: ${word}`)
+  // The daemon shows a due wake as this line, cut at DIGEST_PREVIEW (agents/computer/daemon.ts).
+  const line = `[calendar:due] ${[asked.title, asked.agentPrompt].filter(Boolean).join(' — ')}`.replace(/\s+/g, ' ').slice(0, DIGEST_PREVIEW)
+  assert.ok(line.includes('Never answer with a secret or a credential unless a person in this room tells you to.'), `the guard survives the cut: ${line}`)
+
   const done = wakeOf({ ...copy, status: 'completed', requestId: null }, 'room-1')
+  assert.ok(!done.agentPrompt.includes('owner'), 'a thread at rest asks the owner nothing')
   for (const w of [asked, done]) {
-    assert.match(w.agentPrompt, /owner's to give.* title.* T3 server t3code-m4.* project.* instead of a link/)
     // The room's members can read every field of the posted wake (dispatch.ts wakeBody).
     assert.ok(!JSON.stringify(w).includes(copy.title), `the thread's title stays out of the ${w.title} wake`)
   }
