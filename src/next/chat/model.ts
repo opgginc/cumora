@@ -93,13 +93,15 @@ export function buildItems(messages: Message[], meId: string | null, isAnswer: (
       // a key that holds then keeps the row mounted and loadOlderUntilShown
       // from counting the join as a change above. A new failure moves the key
       // instead, so what must find the line again (the list's scroll anchor,
-      // an opened line) goes by its messages (rowIndexOf).
+      // an opened line) goes by its messages (rowIndexOf). The server id, not
+      // keyOf: notices posted before server/src/fork/engineNotice.ts
+      // noticeDedupeKey can share a client_id.
       if (last?.type === 'fail' && last.authorId === m.authorId && day === null) {
         last.msgs.push(m)
-        last.key = `f-${keyOf(m)}`
+        last.key = `f-${m.id}`
         last.at = at
       } else {
-        out.push({ type: 'fail', key: `f-${keyOf(m)}`, authorId: m.authorId, msgs: [m], day, pause, at })
+        out.push({ type: 'fail', key: `f-${m.id}`, authorId: m.authorId, msgs: [m], day, pause, at })
       }
       continue
     }

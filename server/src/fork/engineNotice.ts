@@ -16,6 +16,22 @@
  * the two together.
  */
 
+import { createHash } from 'node:crypto'
+
+/** How long one engine failure stays a single notice (dedupeTtlSec). */
+export const NOTICE_DEDUPE_SEC = 900
+
+/** The dedupe key of an engine-failure notice. The runtime also makes the
+ *  notice's client_id from it (runtime/inproc-client.ts postSystemNotice) and
+ *  hands that id out again once the window lapses, while the web app takes a
+ *  new message carrying a client_id it holds as the same message and drops the
+ *  older one. So every window gets a key of its own: within one, the same
+ *  error posts once, and an outage's failures half an hour apart stay apart. */
+export function noticeDedupeKey(agentId: string, conversationId: string, detail: string, now = Date.now()): string {
+  const error = createHash('sha1').update(detail).digest('hex').slice(0, 12)
+  return `byoa_engine_failed:${agentId}:${conversationId}:${error}:${Math.floor(now / (NOTICE_DEDUPE_SEC * 1000))}`
+}
+
 /** A bare error category, one per Claude Code retry: one lowercase word or snake_case name. */
 const CATEGORY = /^[a-z]+(?:_[a-z]+)*$/
 /** The error's opening up to the engine's exit: "local claude failed (exit 1): ". */

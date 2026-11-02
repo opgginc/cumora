@@ -546,7 +546,7 @@ function AnswerLine({ msg, author, rise, hl }: { msg: Message; author: Participa
   )
 }
 
-/** The failures (keyOf) of the lines the viewer opened: the transcript
+/** The failures (by id) of the lines the viewer opened: the transcript
  *  unmounts rows that scroll away, and a line remounts under a new key when a
  *  failure joins it, so a line stays open while any of its failures is here. */
 const openFailures = new Set<string>()
@@ -557,7 +557,7 @@ const openFailures = new Set<string>()
 function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; author: Participant | undefined }) {
   const nt = useNT()
   const locale = useLocale()
-  const [open, setOpen] = useState(() => item.msgs.some((m) => openFailures.has(keyOf(m))))
+  const [open, setOpen] = useState(() => item.msgs.some((m) => openFailures.has(m.id)))
   // Only a click plays the entrance; a line that comes back open is drawn at once.
   const [clicked, setClicked] = useState(false)
   const texts = item.msgs.map((m) => failureText(m) ?? '')
@@ -566,8 +566,8 @@ function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; 
   const reason = failureReason(texts[n - 1])
   const toggle = () => {
     for (const m of item.msgs) {
-      if (open) openFailures.delete(keyOf(m))
-      else openFailures.add(keyOf(m))
+      if (open) openFailures.delete(m.id)
+      else openFailures.add(m.id)
     }
     setOpen(!open)
     setClicked(true)

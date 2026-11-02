@@ -17,22 +17,21 @@ const SIZE = 256
  *  photo; sharp's own default is 268. */
 const MAX_INPUT_PIXELS = 50_000_000
 
-/** The raster format of an image by its first bytes, for the four a portrait
- *  may come in. Anything else an agent points at (an SVG, a TIFF, a HEIF)
- *  never reaches libvips's decoders in the server process. */
-function rasterFormat(b: Buffer): 'png' | 'jpeg' | 'gif' | 'webp' | null {
-  if (b.length >= 8 && b.readUInt32BE(0) === 0x89504e47) return 'png'
-  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpeg'
-  if (b.length >= 6 && b.toString('latin1', 0, 4) === 'GIF8') return 'gif'
-  if (b.length >= 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') return 'webp'
-  return null
+/** Whether the image is a PNG, JPEG, GIF or WebP, by its first bytes.
+ *  Anything else an agent points at (an SVG, a TIFF, a HEIF) never reaches
+ *  libvips's decoders in the server process. */
+function isPortraitRaster(b: Buffer): boolean {
+  if (b.length >= 8 && b.readUInt32BE(0) === 0x89504e47) return true // PNG
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return true // JPEG
+  if (b.length >= 6 && b.toString('latin1', 0, 4) === 'GIF8') return true
+  return b.length >= 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP'
 }
 
 /** The image as a square WebP portrait: EXIF orientation applied, centre
  *  cropped (avatars are drawn as circles), the first frame of an animation.
  *  Rejects anything but PNG, JPEG, GIF and WebP, and images over the pixel cap. */
 export async function portraitWebp(image: Buffer): Promise<Buffer> {
-  if (!rasterFormat(image)) throw new Error('source image is not a PNG, JPEG, GIF or WebP')
+  if (!isPortraitRaster(image)) throw new Error('source image is not a PNG, JPEG, GIF or WebP')
   return sharp(image, { limitInputPixels: MAX_INPUT_PIXELS }).rotate().resize(SIZE, SIZE, { fit: 'cover' }).webp({ quality: 80 }).toBuffer()
 }
 

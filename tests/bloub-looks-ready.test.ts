@@ -103,3 +103,18 @@ test('a workspace switch blanks the avatars until that workspace loads', async (
   await second
   assert.equal(s.looks().ready, true)
 })
+
+test('a load that never answers gives up at the deadline, and the avatars stop waiting', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let aborted = false
+  const s = setup((_path, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => { aborted = true; reject(new Error('aborted')) })
+  }))
+  const loading = s.looks().load()
+  await settle()
+  assert.equal(s.looks().ready, false)
+  t.mock.timers.tick(15_000)
+  await loading
+  assert.equal(aborted, true)
+  assert.equal(s.looks().ready, true)
+})

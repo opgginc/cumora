@@ -8,7 +8,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { noticeDetail } from '../fork/engineNotice.js'
+import { NOTICE_DEDUPE_SEC, noticeDedupeKey, noticeDetail } from '../fork/engineNotice.js'
 import { failureDetail } from '../../../src/next/chat/failures.js'
 
 const REFUSED = 'API Error: Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)'
@@ -47,4 +47,14 @@ test('an old notice opened in the transcript reads as the daemon posts it now', 
   for (const [name, error] of Object.entries(ERRORS)) {
     assert.equal(failureDetail(notice(error)), notice(noticeDetail(error)), name)
   }
+})
+
+test('an error posts once per window, and the next window is a new message', () => {
+  // The runtime makes the client_id from this key; the web app merges messages that share one.
+  const window = NOTICE_DEDUPE_SEC * 1000
+  const start = window * 2_000_000
+  const key = (now: number, detail = ERRORS.killed) => noticeDedupeKey('bot', 'room', detail, now)
+  assert.equal(key(start), key(start + window - 1))
+  assert.notEqual(key(start), key(start + window))
+  assert.notEqual(key(start), key(start, ERRORS.json))
 })

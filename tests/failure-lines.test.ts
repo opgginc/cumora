@@ -62,6 +62,15 @@ test('a line is found again by any of its failures when one joins at either end'
   assert.equal(rowIndexOf(items([talk, a, b, c]), keyOf(a)), 1)
 })
 
+test('notices sharing a client_id, as the runtime gave them before each window got its own, stay apart', () => {
+  const [a, b] = [failure('bot', '04:51:39'), failure('bot', '05:40:18')]
+  a.clientId = 'runtime-notice:same'
+  b.clientId = 'runtime-notice:same'
+  const list = items([a, say('me', '05:00:00'), b])
+  assert.deepEqual(list.map((it) => it.type), ['fail', 'msg', 'fail'])
+  assert.notEqual(list[0].key, list[2].key)
+})
+
 test("a line's reason is the error's last line, without retry categories, the agent prefix or the hint", () => {
   assert.equal(failureReason(REFUSED), 'API Error: Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)')
   assert.equal(

@@ -39,7 +39,7 @@ import {
 } from '../memory-scope.js'
 import { parseSseStream, wakeStreamWasStable } from '../runtime/sse-parse.js'
 import { purgeDeletedAgents } from '../../fork/computer-purge.js'
-import { noticeDetail } from '../../fork/engineNotice.js'
+import { NOTICE_DEDUPE_SEC, noticeDedupeKey, noticeDetail } from '../../fork/engineNotice.js'
 import { sharedMemoryPrompt, withSharedMemory } from '../../fork/sharedMemory.js'
 import { type ProviderProfile, providerProfileEnv, providerProfileFingerprint, providerProfileMetadata, readProviderProfiles, redactProviderSecret } from './provider-profiles.js'
 import { modelIdOrNull } from './model-id.js'
@@ -2560,8 +2560,8 @@ export class AgentRunner {
       })
     }
     const hint = authFailureHint(this.adapter.id, args.error)
-    // Fork: the notice drops the error categories the classifiers read (fork/engineNotice.ts),
-    // and the same visible error is the same notice however many retries came before it.
+    // Fork: the notice drops the error categories the classifiers read, and
+    // its dedupe key changes every window (fork/engineNotice.ts).
     const detail = noticeDetail(args.error)
     const conversationIds = await failureConversationIds(this.cfg.serverUrl, args.token, args.conversationId)
     await Promise.all(conversationIds.map((conversationId) => runtimeBest(this.cfg.serverUrl, '/notices', args.token, {
@@ -2569,8 +2569,8 @@ export class AgentRunner {
       agentId: this.agent.id,
       noticeKind: 'byoa_engine_failed',
       text: `${this.agent.name} could not run on local ${this.adapter.id}: ${detail}\n${hint}`,
-      dedupeKey: `byoa_engine_failed:${this.agent.id}:${conversationId}:${hashText(detail)}`,
-      dedupeTtlSec: 900,
+      dedupeKey: noticeDedupeKey(this.agent.id, conversationId, detail),
+      dedupeTtlSec: NOTICE_DEDUPE_SEC,
     })))
   }
 
