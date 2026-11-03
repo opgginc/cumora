@@ -17,6 +17,8 @@ const GROUP_GAP_MS = 5 * 60_000
 const STAMP_GAP_MIN = 5
 /** A silence at least this long gets a line saying how long it lasted, and ends the turn. */
 const PAUSE_MS = 15 * 60_000
+/** No line drawn open: what every buildItems caller but the transcript passes. */
+const NO_OPENED: ReadonlySet<string> = new Set()
 
 export type Pos = 'single' | 'first' | 'middle' | 'last'
 /** Where a message's time shows by default: on the name row that starts a
@@ -67,7 +69,7 @@ function sameDay(a: Date, b: Date): boolean {
  * a line that was drawn open: `opened` holds the first failure of each such
  * line, and each of them starts a line of its own.
  */
-export function buildItems(messages: Message[], meId: string | null, isAnswer: (m: Message) => boolean, opened: ReadonlySet<string>): Item[] {
+export function buildItems(messages: Message[], meId: string | null, isAnswer: (m: Message) => boolean, opened: ReadonlySet<string> = NO_OPENED): Item[] {
   const out: Item[] = []
   let prevAt: Date | null = null
   let shownMin = 0
@@ -140,10 +142,28 @@ export function rowMessages(it: Item): Message[] {
   return it.type === 'work' || it.type === 'fail' ? it.msgs : [it.msg]
 }
 
-/** The row holding the message with this key (keyOf), or -1. A row that
- *  gathers messages changes its key as they join it, at its top or bottom. */
-export function rowIndexOf(items: Item[], key: string): number {
-  return items.findIndex((it) => rowMessages(it).some((m) => keyOf(m) === key))
+/** The row holding the message with this id, or -1. A row that gathers
+ *  messages changes its key as they join it, at its top or bottom, so it is
+ *  found by a message. By server id, not keyOf: notices from before
+ *  server/src/fork/engineNotice.ts gave each window its own key can share a
+ *  client id. A bubble looked up while it waited for its server id had its
+ *  client id as its id, so it is found by that client id once the id changes. */
+export function rowIndexOf(items: Item[], id: string): number {
+  const at = items.findIndex((it) => rowMessages(it).some((m) => m.id === id))
+  return at >= 0 ? at : items.findIndex((it) => rowMessages(it).some((m) => m.clientId === id))
+}
+
+/**
+ * The transcript's scroll anchor: Virtuoso keeps its place on a prepend only
+ * if firstItemIndex drops by exactly the rows added above, so MessageList
+ * counts how far the first row it showed has moved down. `id` is that row's
+ * first message (null before any row); the result is where it stands now,
+ * or, once it is gone, the first row, which becomes the anchor.
+ */
+export function listAnchor(items: Item[], id: string | null): { id: string | null; index: number } {
+  const index = id === null ? -1 : rowIndexOf(items, id)
+  if (index >= 0) return { id, index }
+  return { id: items[0] ? rowMessages(items[0])[0].id : null, index: 0 }
 }
 
 /**

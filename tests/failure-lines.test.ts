@@ -11,7 +11,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Message } from '../src/types.ts'
-import { buildItems, keyOf, rowIndexOf } from '../src/next/chat/model.ts'
+import { buildItems, listAnchor, rowIndexOf } from '../src/next/chat/model.ts'
 import { failureReason } from '../src/next/chat/failures.ts'
 
 let n = 0
@@ -23,7 +23,7 @@ const row = (authorId: string, t: string, kind: Message['kind'], body: string): 
 const notice = (authorId: string, t: string, text: string) => row(authorId, t, 'system', JSON.stringify({ kind: 'notice', noticeKind: 'byoa_engine_failed', text }))
 const firing = (t: string) => row('calendar', t, 'system', JSON.stringify({ kind: 'calendar_event', title: 'Merge digest' }))
 const say = (authorId: string, t: string) => row(authorId, t, 'text', 'hi')
-const items = (rows: Message[], opened: ReadonlySet<string> = new Set()) => buildItems(rows, 'me', () => false, opened)
+const items = (rows: Message[], opened?: ReadonlySet<string>) => buildItems(rows, 'me', () => false, opened)
 
 const HINT = 'Check the daemon terminal for details, then wake the agent again.'
 /** What PR Summary Bot's DM held after the 2026-11-01 outage, three times over. */
@@ -58,8 +58,8 @@ test('a line is found again by any of its failures when one joins at either end'
   // A new failure moves the key; the line is still the one holding b.
   const live = items([talk, b, c])
   assert.notEqual(live[1].key, items([talk, b])[1].key)
-  assert.equal(rowIndexOf(live, keyOf(b)), 1)
-  assert.equal(rowIndexOf(items([talk, a, b, c]), keyOf(a)), 1)
+  assert.equal(rowIndexOf(live, b.id), 1)
+  assert.equal(rowIndexOf(items([talk, a, b, c]), a.id), 1)
 })
 
 test('an older page lands above an opened line as a line of its own, and new failures still join it', () => {
@@ -73,11 +73,22 @@ test('an older page lands above an opened line as a line of its own, and new fai
   const paged = items([talk, a, b], opened)
   assert.deepEqual(shape(paged), ['msg', 'fail×1', 'fail×1'])
   assert.equal(paged[2].key, newest[0].key)
-  assert.equal(rowIndexOf(paged, keyOf(b)), 2)
+  assert.equal(rowIndexOf(paged, b.id), 2)
   // A failure that arrives later joins the opened line at its bottom.
   assert.deepEqual(shape(items([talk, a, b, c], opened)), ['msg', 'fail×1', 'fail×2'])
   // A line nobody opened takes the older page in, as before.
   assert.deepEqual(shape(items([talk, a, b, c])), ['msg', 'fail×3'])
+})
+
+test("the list's anchor stays on an opened line when an older failure with its client_id lands above it", () => {
+  const [a, b, c] = [failure('bot', '04:51:39'), failure('bot', '05:16:53'), failure('bot', '05:40:18')]
+  a.clientId = 'runtime-notice:same'
+  b.clientId = 'runtime-notice:same'
+  const opened = new Set([b.id])
+  // The newest page opens on the opened line, so its first failure becomes the anchor.
+  const anchor = listAnchor(items([b, c], opened), null)
+  // An older page brings a talk row and a, which lands above the line as a line of its own.
+  assert.deepEqual(listAnchor(items([say('me', '04:00:00'), a, b, c], opened), anchor.id), { id: anchor.id, index: 2 })
 })
 
 test('notices sharing a client_id, as the runtime gave them before each window got its own, stay apart', () => {

@@ -33,7 +33,7 @@ import { agentRef } from '../agentRefs'
 import { Avatar } from '../ui/Avatar'
 import { IconButton, INERT, Menu, Spinner, useCoarse, useMenu, type MenuEntry } from '../ui/primitives'
 import { IAlert, IArrowDown, IArrowUp, ICheck, IChevronRight, ICopy, IDownload, IFile, IMore, IReply, ISpark, IThread, IWhisper } from '../ui/icons'
-import { createdAt, floatingDay, keyOf, loadOlderUntilShown, rowIndexOf, rowMessages, type DayPill, type Item, type Pos, type Stamp } from './model'
+import { createdAt, floatingDay, listAnchor, loadOlderUntilShown, rowMessages, type DayPill, type Item, type Pos, type Stamp } from './model'
 import { failureDetail, failureReason, failureText } from './failures'
 import { authorOf } from './deletedAuthor'
 import { NO_ANSWERS, roomTalk, transcriptItems, transcriptKeys } from './cardAnswers'
@@ -859,19 +859,12 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     firstPaint.current = false
   }
 
-  // Virtuoso keeps its scroll anchor on prepend only if firstItemIndex drops
-  // by exactly the number of rows added above. Items are a filtered view of
-  // the store, so anchor on the first row we ever showed and count how far
-  // it has moved down. The row is found by a message of it: a work run or a
-  // failure line changes its key as messages join it.
-  const anchorKey = useRef<string | null>(null)
-  if (anchorKey.current === null && items.length > 0) anchorKey.current = keyOf(rowMessages(items[0])[0])
-  let anchorIndex = anchorKey.current ? rowIndexOf(items, anchorKey.current) : 0
-  if (anchorIndex < 0) {
-    anchorKey.current = items[0] ? keyOf(rowMessages(items[0])[0]) : null
-    anchorIndex = 0
-  }
-  const firstItemIndex = VIRTUOSO_FIRST_INDEX_BASE - anchorIndex
+  // Items are a filtered view of the store, so Virtuoso's anchor is counted
+  // from the first row this list showed (listAnchor).
+  const anchorId = useRef<string | null>(null)
+  const anchor = listAnchor(items, anchorId.current)
+  anchorId.current = anchor.id
+  const firstItemIndex = VIRTUOSO_FIRST_INDEX_BASE - anchor.index
 
   const [float] = useState(createDayFloat)
   float.label = (day) => dayLabel(new Date(day), locale, nt('msg.today'), nt('msg.yesterday'))

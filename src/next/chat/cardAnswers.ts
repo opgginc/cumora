@@ -39,13 +39,13 @@ export function answerKind(answers: Answers, m: { id: string; clientId?: string 
 /** The rows the transcript draws (buildItems, which takes `opened` as is).
  *  The reply that answered a question is a note; a secret's reply only says
  *  that it was sent, which its card already shows, so it is left out. */
-export function transcriptItems(messages: Message[], me: string | null, answers: Answers, opened: ReadonlySet<string>): Item[] {
+export function transcriptItems(messages: Message[], me: string | null, answers: Answers, opened?: ReadonlySet<string>): Item[] {
   const shown = answers.size === 0 ? messages : messages.filter((m) => answerKind(answers, m) !== 'secret')
   return buildItems(shown, me, (m) => answerKind(answers, m) === 'choice', opened)
 }
 
 /** The keys of the rows the transcript draws, for loadOlderUntilShown. */
-export function transcriptKeys(messages: Message[], me: string | null, answers: Answers, opened: ReadonlySet<string>): string[] {
+export function transcriptKeys(messages: Message[], me: string | null, answers: Answers, opened?: ReadonlySet<string>): string[] {
   return transcriptItems(messages, me, answers, opened).map((it) => it.key)
 }
 
