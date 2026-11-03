@@ -18,6 +18,11 @@ const { outputText } = ts.transpileModule(source, {
 })
 const loadStore = compileFunction(outputText, ['require', 'exports', 'console'])
 
+/** The client's ApiError (message plus HTTP status), which the store checks with instanceof. */
+class ApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message) }
+}
+
 function messages(first: number, last: number): ApiMessage[] {
   return Array.from({ length: last - first + 1 }, (_, index) => {
     const sequence = first + index
@@ -37,12 +42,19 @@ function setup(last: number, cache: Message[] = messages(1, 80), serverMessages 
         .slice(-(options.limit ?? 80))
     },
   }
+  // Stand-ins for the chat list and the selection; a room the server answers 404 for must leave both.
+  const rooms = create(() => ({ list: [{ id: 'chat' }, { id: 'other' }] }))
+  const app = create<{ selectedConversationId: string | null; selectConversation: (id: string | null) => void }>((set) => ({
+    selectedConversationId: 'chat',
+    selectConversation: (id) => set({ selectedConversationId: id }),
+  }))
   const dependencies: Record<string, unknown> = {
     zustand: { create },
-    '@/api/client': { api },
+    '@/api/client': { api, ApiError },
     '@/lib/replyCount': { applyReplyCountDelta },
     '@/stores/auth': { getMeId: () => 'user' },
-    '@/stores/app': { useApp: { getState: () => ({ selectedConversationId: 'chat' }) } },
+    '@/stores/app': { useApp: app },
+    '@/stores/conversations': { useConversations: rooms },
   }
   const exports = {} as typeof import('../src/stores/messages')
   loadStore((name: string) => {
@@ -56,8 +68,35 @@ function setup(last: number, cache: Message[] = messages(1, 80), serverMessages 
     firstItemIndex: { chat: exports.VIRTUOSO_FIRST_INDEX_BASE },
   })
   const sequences = () => store.getState().byConvo.chat.map((m) => (m as ApiMessage).sequence)
-  return { store, api, requests, sequences }
+  return { store, api, requests, sequences, rooms, app }
 }
+
+describe('a room the server answers 404 for', () => {
+  // Why the row has to go: the comment on the 404 branch of loadConversation.
+  it('leaves the chat list along with the selection', async () => {
+    const { store, api, rooms, app } = setup(80, [])
+    api.getMessages = async () => { throw new ApiError('not found (404)', 404) }
+    await store.getState().loadConversation('chat')
+    assert.deepEqual(rooms.getState().list.map((c) => c.id), ['other'])
+    assert.equal(app.getState().selectedConversationId, null)
+  })
+
+  it('stays listed after a failure that is not a 404', async () => {
+    const { store, api, rooms } = setup(80, [])
+    api.getMessages = async () => { throw new Error('Failed to fetch') }
+    await store.getState().loadConversation('chat')
+    assert.deepEqual(rooms.getState().list.map((c) => c.id), ['chat', 'other'])
+  })
+
+  it('stays listed when a 403 or 500 says "not found"', async () => {
+    for (const status of [403, 500]) {
+      const { store, api, rooms } = setup(80, [])
+      api.getMessages = async () => { throw new ApiError(`participant not found (${status})`, status) }
+      await store.getState().loadConversation('chat')
+      assert.deepEqual(rooms.getState().list.map((c) => c.id), ['chat', 'other'], `status ${status}`)
+    }
+  })
+})
 
 describe('message history after reconnect', () => {
   for (const method of ['reloadConversation', 'loadConversation'] as const) {

@@ -4,6 +4,7 @@ import { applyReplyCountDelta } from '@/lib/replyCount'
 import { api, ApiError, ws, type WsEvent, type ApiMessage } from '@/api/client'
 import { useApp } from '@/stores/app'
 import { getMeId } from '@/stores/auth'
+import { useConversations } from '@/stores/conversations'
 
 const EMPTY_MESSAGES: Message[] = []
 
@@ -418,10 +419,18 @@ export const useMessages = create<MessagesState>((set, get) => ({
       // or a stale id leaked in from somewhere). Don't surface a hard error
       // panel for that — silently drop the selection so the chat pane falls
       // back to the "Select a conversation" empty state.
-      if (/\b404\b/.test(msg) || /not found/i.test(msg)) {
+      // By status, not by message: the row goes too (below), also for rooms a
+      // prefetch only touched, and a 403 or 500 whose detail says "not found"
+      // must not take it away.
+      if (err instanceof ApiError && err.status === 404) {
         set((s) => ({
           loading: new Set([...s.loading].filter((x) => x !== id)),
         }))
+        // Its chat-list row is just as stale, so it goes too. A listed room
+        // stays openable, and the redesign's wide layouts reopen the last room
+        // as soon as none is selected: they would open this one straight back
+        // and fetch it again, hundreds of requests a second.
+        useConversations.setState((s) => ({ list: s.list.filter((c) => c.id !== id) }))
         if (useApp.getState().selectedConversationId === id) {
           useApp.getState().selectConversation(null)
         }
