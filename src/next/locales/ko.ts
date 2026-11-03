@@ -300,7 +300,7 @@ export const ko: Record<keyof typeof en, string> = {
   'edit.agentStyleRequired': '에이전트 스타일을 입력하세요.',
   'edit.agentMore': '모델, 컴퓨터, 아바타',
 
-  'coding.none': '이 대화방 에이전트의 T3 Code 스레드가 아직 없어요.',
+  'coding.none': '이 대화방에서 시작한 T3 Code 스레드가 아직 없어요.',
   'coding.locked': '소유자와 관리자 전용',
   'coding.lockedBody': '스레드 제목에는 어느 대화방의 내용이든 인용될 수 있어서 워크스페이스 소유자와 관리자만 스레드를 볼 수 있어요.',
   'coding.running': '실행 중',

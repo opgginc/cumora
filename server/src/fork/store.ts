@@ -61,9 +61,11 @@ export interface CodingThread {
   threadId: string
   companyId: string
   agentId: string
-  /** The room of the turn that launched it, found when its agent is first woken
-   *  (./coding.ts launchRoom); null until then, or when that turn had no one room. */
-  conversationId: string | null
+  /** The room of the turn that launched it, which the poller looks for once
+   *  that turn has recorded a call since the launch (./coding.ts launchRoom):
+   *  undefined until then, null when that turn had no one room. A group room's
+   *  Coding tab lists the threads launched from it, and their wakes go there. */
+  conversationId: string | null | undefined
   /** Without the agent's `[@…] ` mark (./coding.ts parseMark). */
   title: string
   /** T3's thread status (running, completed, failed...), or 'question' while
@@ -81,9 +83,10 @@ export interface CodingThread {
   settledAt: string | null
 }
 
-/** A thread as the poller hands it over. `woken` applies to a new row only: a
- *  thread first seen long after it came to rest arrives already woken. */
-export type NewCodingThread = CodingThread & { woken: string | null }
+/** A thread as the poller hands it over, before its room is looked for.
+ *  `woken` applies to a new row only: a thread first seen long after it came
+ *  to rest arrives already woken. */
+export type NewCodingThread = Omit<CodingThread, 'conversationId'> & { woken: string | null }
 
 /** What the agent of a thread was woken for: once per run and resting status,
  *  and once per question, so a second question in the same run wakes it again. */
@@ -355,6 +358,14 @@ const MIGRATIONS = [
   // list it; the row stays, so it keeps the wake its agent already had.
   `ALTER TABLE coding_threads ADD COLUMN settled_at TEXT;
    ALTER TABLE coding_threads ADD COLUMN unlisted INTEGER NOT NULL DEFAULT 0;`,
+
+  // Whether the poller has looked for the room of the turn that launched a
+  // Coding thread (./coding.ts launchRoom): conversation_id holds it then, or
+  // stays NULL when that turn had no one room. Before this step a room was
+  // looked for only at the thread's first wake, so a thread with a room had it
+  // looked for, and the poller looks once more for every other one.
+  `ALTER TABLE coding_threads ADD COLUMN room_checked INTEGER NOT NULL DEFAULT 0;
+   UPDATE coding_threads SET room_checked = 1 WHERE conversation_id IS NOT NULL;`,
 ]
 
 export interface FileVersion {
@@ -770,18 +781,21 @@ export async function openForkStore(file: string) {
       save()
     },
 
-    /** An agent's threads on `servers` that T3 still lists, the most recently
-     *  changed first: every one not settled in T3 or in one of the `open`
-     *  statuses, and of the other settled ones the `settledLimit` most recently
-     *  settled at or after `settledSince`. The poller stores settled_at as
-     *  toISOString() does, so the two compare as text. */
+    /** An agent's threads on `servers` that T3 still lists, with `room` only
+     *  those launched from it, the most recently changed first: every one not
+     *  settled in T3 or in one of the `open` statuses, and of the other
+     *  settled ones the `settledLimit` most recently settled at or after
+     *  `settledSince`. The poller stores settled_at as toISOString() does, so
+     *  the two compare as text. */
     codingThreads(companyId: string, agentId: string, list: {
       servers: readonly string[]
       open: readonly string[]
       settledSince: string
       settledLimit: number
+      room?: string
     }): CodingThread[] {
-      const these = `company_id = ? AND agent_id = ? AND unlisted = 0 AND server IN (${list.servers.map(() => '?').join(', ')})`
+      const these = `company_id = ? AND agent_id = ? AND unlisted = 0 AND server IN (${list.servers.map(() => '?').join(', ')})${list.room === undefined ? '' : ' AND conversation_id = ?'}`
+      const scope = [companyId, agentId, ...list.servers, ...(list.room === undefined ? [] : [list.room])]
       const open = `status IN (${list.open.map(() => '?').join(', ')})`
       return rows(
         `SELECT ${CODING_COLUMNS} FROM coding_threads WHERE ${these} AND (settled_at IS NULL OR ${open})
@@ -789,7 +803,7 @@ export async function openForkStore(file: string) {
          SELECT * FROM (SELECT ${CODING_COLUMNS} FROM coding_threads WHERE ${these} AND settled_at >= ? AND NOT ${open}
                         ORDER BY settled_at DESC LIMIT ?)
          ORDER BY updated_at DESC`,
-        [companyId, agentId, ...list.servers, ...list.open, companyId, agentId, ...list.servers, list.settledSince, ...list.open, list.settledLimit],
+        [...scope, ...list.open, ...scope, list.settledSince, ...list.open, list.settledLimit],
       ).map(toCodingThread)
     },
 
@@ -810,8 +824,8 @@ export async function openForkStore(file: string) {
     /** Copies one poll of T3 in one write. The poller hands over every thread on
      *  every poll, so nothing is written when no status, title, run, question,
      *  pull request or settling changed and T3 listed the thread before too. A
-     *  row keeps the agent of its first copy, the room its first wake found and
-     *  the wake it had. Returns the workspaces whose rows changed. */
+     *  row keeps the agent of its first copy, its room and the wake it had.
+     *  Returns the workspaces whose rows changed. */
     saveCodingThreads(threads: NewCodingThread[]): Set<string> {
       const changed = new Set<string>()
       db.run('BEGIN')
@@ -819,8 +833,8 @@ export async function openForkStore(file: string) {
         for (const t of threads) {
           // RETURNING answers only for a row that was written, with its own workspace.
           for (const [companyId] of rows(
-            `INSERT INTO coding_threads (server, thread_id, company_id, agent_id, conversation_id, title, status, run_id, request_id, pull_requests, created_at, updated_at, settled_at, woken)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO coding_threads (server, thread_id, company_id, agent_id, title, status, run_id, request_id, pull_requests, created_at, updated_at, settled_at, woken)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (server, thread_id) DO UPDATE SET
                title = excluded.title, status = excluded.status, run_id = excluded.run_id, request_id = excluded.request_id,
                pull_requests = excluded.pull_requests, updated_at = excluded.updated_at, settled_at = excluded.settled_at, unlisted = 0
@@ -828,7 +842,7 @@ export async function openForkStore(file: string) {
                 OR request_id IS NOT excluded.request_id OR pull_requests IS NOT excluded.pull_requests
                 OR settled_at IS NOT excluded.settled_at OR unlisted <> 0
              RETURNING company_id`,
-            [t.server, t.threadId, t.companyId, t.agentId, t.conversationId, t.title, t.status, t.runId, t.requestId,
+            [t.server, t.threadId, t.companyId, t.agentId, t.title, t.status, t.runId, t.requestId,
               JSON.stringify(t.pullRequests), t.createdAt, t.updatedAt, t.settledAt, t.woken],
           )) changed.add(String(companyId))
         }
@@ -867,6 +881,18 @@ export async function openForkStore(file: string) {
       ).length > 0
     },
 
+    /** Threads from `server` whose launching turn's room was not looked for yet. */
+    codingRoomsDue(server: string): CodingThread[] {
+      return rows(`SELECT ${CODING_COLUMNS} FROM coding_threads WHERE server = ? AND room_checked = 0`, [server]).map(toCodingThread)
+    },
+
+    /** Records the room of the turn that launched a thread, null when that
+     *  turn had no one room. It is looked for once. */
+    setCodingRoom(server: string, threadId: string, conversationId: string | null): void {
+      db.run('UPDATE coding_threads SET conversation_id = ?, room_checked = 1 WHERE server = ? AND thread_id = ?', [conversationId, server, threadId])
+      save()
+    },
+
     /** Threads from `server` resting in one of `statuses` that their agent was not woken for yet. */
     codingWakesDue(server: string, statuses: readonly string[]): CodingThread[] {
       return rows(
@@ -876,13 +902,9 @@ export async function openForkStore(file: string) {
     },
 
     /** Records the wake a thread's agent got, or why it could not be posted;
-     *  either way the poller does not try that wake again. A room the wake went
-     *  to is kept for the thread's later wakes. */
-    markCodingWoken(server: string, threadId: string, key: string, error: string | null, conversationId: string | null = null): void {
-      db.run(
-        'UPDATE coding_threads SET woken = ?, wake_error = ?, conversation_id = coalesce(conversation_id, ?) WHERE server = ? AND thread_id = ?',
-        [key, error, conversationId, server, threadId],
-      )
+     *  either way the poller does not try that wake again. */
+    markCodingWoken(server: string, threadId: string, key: string, error: string | null): void {
+      db.run('UPDATE coding_threads SET woken = ?, wake_error = ? WHERE server = ? AND thread_id = ?', [key, error, server, threadId])
       save()
     },
 
@@ -978,10 +1000,10 @@ export async function openForkStore(file: string) {
   }
 }
 
-const CODING_COLUMNS = 'server, thread_id, company_id, agent_id, conversation_id, title, status, run_id, request_id, pull_requests, created_at, updated_at, settled_at'
-const toCodingThread = ([server, threadId, companyId, agentId, conversationId, title, status, runId, requestId, pullRequests, createdAt, updatedAt, settledAt]: initSqlJs.SqlValue[]): CodingThread => ({
+const CODING_COLUMNS = 'server, thread_id, company_id, agent_id, conversation_id, title, status, run_id, request_id, pull_requests, created_at, updated_at, settled_at, room_checked'
+const toCodingThread = ([server, threadId, companyId, agentId, conversationId, title, status, runId, requestId, pullRequests, createdAt, updatedAt, settledAt, roomChecked]: initSqlJs.SqlValue[]): CodingThread => ({
   server: String(server), threadId: String(threadId), companyId: String(companyId), agentId: String(agentId),
-  conversationId: conversationId === null ? null : String(conversationId), title: String(title), status: String(status),
+  conversationId: !roomChecked ? undefined : conversationId === null ? null : String(conversationId), title: String(title), status: String(status),
   runId: runId === null ? null : String(runId), requestId: requestId === null ? null : String(requestId),
   pullRequests: JSON.parse(String(pullRequests)), createdAt: String(createdAt), updatedAt: String(updatedAt),
   settledAt: settledAt === null ? null : String(settledAt),

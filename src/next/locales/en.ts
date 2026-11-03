@@ -289,7 +289,7 @@ const core = {
   'edit.agentStyleRequired': 'An agent needs a style.',
   'edit.agentMore': 'Model, computer and avatar',
 
-  'coding.none': 'No T3 Code threads from the agents in this room yet.',
+  'coding.none': 'No T3 Code threads launched from this room yet.',
   'coding.locked': 'Owners and admins only',
   'coding.lockedBody': 'A thread’s title can quote any room, so only workspace owners and admins can see the threads.',
   'coding.running': 'Running',
