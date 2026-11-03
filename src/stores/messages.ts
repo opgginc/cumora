@@ -421,27 +421,31 @@ export const useMessages = create<MessagesState>((set, get) => ({
     } catch (err) {
       console.warn('[messages] loadConversation failed', err)
       const msg = err instanceof Error ? err.message : 'Something went wrong.'
-      // A 404 means the conversation no longer exists (deleted server-side,
-      // or a stale id leaked in from somewhere). Don't surface a hard error
-      // panel for that — silently drop the selection so the chat pane falls
-      // back to the "Select a conversation" empty state.
-      // By status, not by message: the row goes too (below), also for rooms a
-      // prefetch only touched, and a 403 or 500 whose detail says "not found"
-      // must not take it away.
+      // A 404 says the room is gone for this user (deleted, or they were
+      // removed), or that a proxy answered for a moment. Only the server's
+      // room list tells the two apart, so it is reloaded rather than edited
+      // here: a room it no longer lists leaves with that reload, and one it
+      // still lists keeps its row. By status, not by message: a 403 or 500
+      // whose detail says "not found" is an ordinary failure.
       if (err instanceof ApiError && err.status === 404) {
-        set((s) => ({
-          loading: new Set([...s.loading].filter((x) => x !== id)),
-        }))
-        // Its chat-list row is just as stale, so it goes too. A listed room
-        // stays openable, and the redesign's wide layouts reopen the last room
-        // as soon as none is selected: they would open this one straight back
-        // and fetch it again, hundreds of requests a second.
-        useConversations.setState((s) => ({ list: s.list.filter((c) => c.id !== id) }))
-        if (useApp.getState().selectedConversationId === id) {
-          useApp.getState().selectConversation(null)
+        await useConversations.getState().reload()
+        if (!useConversations.getState().list.some((c) => c.id === id)) {
+          set((s) => ({
+            loading: new Set([...s.loading].filter((x) => x !== id)),
+          }))
+          // The classic phone layout leaves a room only when the selection
+          // clears; the redesign's SelectionGuard leaves an unlisted one itself.
+          if (useApp.getState().selectedConversationId === id) {
+            useApp.getState().selectConversation(null)
+          }
+          return
         }
-        return
       }
+      // The selection stays, also on a listed room that answered 404: the
+      // pane shows the error with Retry. Clearing it would make the
+      // redesign's wide layouts reopen the last room at once (useDefaultRoom
+      // in ChatsSection), so a room that still 404s would be fetched again
+      // and again, hundreds of requests a second.
       set((s) => ({
         loading: new Set([...s.loading].filter((x) => x !== id)),
         errors: { ...s.errors, [id]: msg },
