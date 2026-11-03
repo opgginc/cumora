@@ -37,12 +37,19 @@ function setup(last: number, cache: Message[] = messages(1, 80), serverMessages 
         .slice(-(options.limit ?? 80))
     },
   }
+  // The chat list and the selection, both of which a room the server no longer has leaves.
+  const rooms = create(() => ({ list: [{ id: 'chat' }, { id: 'other' }] }))
+  const app = create<{ selectedConversationId: string | null; selectConversation: (id: string | null) => void }>((set) => ({
+    selectedConversationId: 'chat',
+    selectConversation: (id) => set({ selectedConversationId: id }),
+  }))
   const dependencies: Record<string, unknown> = {
     zustand: { create },
     '@/api/client': { api },
     '@/lib/replyCount': { applyReplyCountDelta },
     '@/stores/auth': { getMeId: () => 'user' },
-    '@/stores/app': { useApp: { getState: () => ({ selectedConversationId: 'chat' }) } },
+    '@/stores/app': { useApp: app },
+    '@/stores/conversations': { useConversations: rooms },
   }
   const exports = {} as typeof import('../src/stores/messages')
   loadStore((name: string) => {
@@ -56,8 +63,29 @@ function setup(last: number, cache: Message[] = messages(1, 80), serverMessages 
     firstItemIndex: { chat: exports.VIRTUOSO_FIRST_INDEX_BASE },
   })
   const sequences = () => store.getState().byConvo.chat.map((m) => (m as ApiMessage).sequence)
-  return { store, api, requests, sequences }
+  return { store, api, requests, sequences, rooms, app }
 }
+
+describe('a room the server answers 404 for', () => {
+  // Deleted, or the membership is gone. A room still in the chat list is opened
+  // straight back by the redesign's wide layouts (they reopen the last room
+  // whenever none is open), and every pass fetches it again: thousands of
+  // requests in ten seconds.
+  it('leaves the chat list along with the selection', async () => {
+    const { store, api, rooms, app } = setup(80, [])
+    api.getMessages = async () => { throw new Error('not found (404)') }
+    await store.getState().loadConversation('chat')
+    assert.deepEqual(rooms.getState().list.map((c) => c.id), ['other'])
+    assert.equal(app.getState().selectedConversationId, null)
+  })
+
+  it('stays listed after a failure that is not a 404', async () => {
+    const { store, api, rooms } = setup(80, [])
+    api.getMessages = async () => { throw new Error('Failed to fetch') }
+    await store.getState().loadConversation('chat')
+    assert.deepEqual(rooms.getState().list.map((c) => c.id), ['chat', 'other'])
+  })
+})
 
 describe('message history after reconnect', () => {
   for (const method of ['reloadConversation', 'loadConversation'] as const) {
