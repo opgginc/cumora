@@ -399,10 +399,11 @@ async function agentWorkspaces(): Promise<string[]> {
 export function wakeOf(t: CodingThread, room: string): Wake {
   const where = `on the T3 MCP server ${t.server} (threadId ${t.threadId})`
   const question = t.status === 'question'
-  // T3's tool descriptions tell an agent to name a thread by its `link`, and a
-  // title is agent text that can quote any room. So the room hears only the
-  // server and the project; the Coding tab shows the title to owners and admins.
-  const ownersCall = "If the owner must answer, do not post the thread's title or a link to it: tell this room the T3 server's name and the project or repository, and that it is in your Coding tab."
+  // T3's tool descriptions tell an agent to name a thread by its `link`, but
+  // the owner finds a thread in T3 by its title, its server and its project,
+  // so the room gets those and no link. A title is agent text that can quote
+  // any room, and the owner chose to let the room read it.
+  const ownersCall = 'If the owner must answer, post no link to the thread: tell this room its title without the [@…] mark, its T3 server and its project or repository, and that it is in your Coding tab.'
   return {
     companyId: t.companyId,
     assigneeId: t.agentId,
