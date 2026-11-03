@@ -33,7 +33,7 @@ import { agentRef } from '../agentRefs'
 import { Avatar } from '../ui/Avatar'
 import { IconButton, INERT, Menu, Spinner, useCoarse, useMenu, type MenuEntry } from '../ui/primitives'
 import { IAlert, IArrowDown, IArrowUp, ICheck, IChevronRight, ICopy, IDownload, IFile, IMore, IReply, ISpark, IThread, IWhisper } from '../ui/icons'
-import { createdAt, floatingDay, keyOf, loadOlderUntilShown, rowIndexOf, rowMessages, type DayPill, type Item, type Pos, type Stamp } from './model'
+import { createdAt, floatingDay, listAnchor, loadOlderUntilShown, rowMessages, type DayPill, type Item, type Pos, type Stamp } from './model'
 import { failureDetail, failureReason, failureText } from './failures'
 import { authorOf } from './deletedAuthor'
 import { NO_ANSWERS, roomTalk, transcriptItems, transcriptKeys } from './cardAnswers'
@@ -550,6 +550,23 @@ function AnswerLine({ msg, author, rise, hl }: { msg: Message; author: Participa
  *  unmounts rows that scroll away, and a line remounts under a new key when a
  *  failure joins it, so a line stays open while any of its failures is here. */
 const openFailures = new Set<string>()
+/** The first failure of each line drawn open, which buildItems never joins to
+ *  the failures before it: an older page then lands above the line as rows of
+ *  its own, which the list keeps its anchor by, instead of inside the line the
+ *  reader is in. Kept once the line closes, so the rows above it never change
+ *  under the reader later. */
+const openedStarts = new Set<string>()
+
+/** Records a line's open state in both sets. FailureLine calls it from one
+ *  effect, which runs for a line opened by a click and for one that comes back
+ *  open alike, so a line drawn open never misses its start. */
+function markOpen(msgs: Message[], open: boolean) {
+  if (open) openedStarts.add(msgs[0].id)
+  for (const m of msgs) {
+    if (open) openFailures.add(m.id)
+    else openFailures.delete(m.id)
+  }
+}
 
 /** One agent's engine failures in a row (buildItems), as one line: who, how
  *  many times and when, and the last line of the latest error. A click opens
@@ -558,6 +575,10 @@ function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; 
   const nt = useNT()
   const locale = useLocale()
   const [open, setOpen] = useState(() => item.msgs.some((m) => openFailures.has(m.id)))
+  // After the commit, not during a render. A page that could join the line
+  // arrives over the network later, and React runs pending effects before it
+  // renders that page.
+  useEffect(() => markOpen(item.msgs, open), [item.msgs, open])
   // Only a click plays the entrance; a line that comes back open is drawn at once.
   const [clicked, setClicked] = useState(false)
   const texts = item.msgs.map((m) => failureText(m) ?? '')
@@ -565,21 +586,22 @@ function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; 
   const first = createdAt(item.msgs[0])
   const reason = failureReason(texts[n - 1])
   const toggle = () => {
-    for (const m of item.msgs) {
-      if (open) openFailures.delete(m.id)
-      else openFailures.add(m.id)
-    }
     setOpen(!open)
     setClicked(true)
   }
   return (
     <div id={`m-${item.msgs[0].id}`} className="nx-line nx-fail">
+      {/* Two halves, who and when-and-why, which wrap apart where one line is too narrow (chat.css). */}
       <button type="button" className="nx-fail__pill" aria-expanded={open} onClick={toggle}>
-        <IAlert />
-        <span><b>{author?.name ?? nt('msg.someone')}</b> {n === 1 ? nt('msg.failOnce') : nt('msg.failTimes', { n })}</span>
-        <span className="nx-mono">{n === 1 ? clock(first, locale) : clockRange(first, item.at, locale)}</span>
-        {reason && <span className="nx-fail__why">{reason}</span>}
-        <IChevronRight className="nx-fail__chev" />
+        <span className="nx-fail__who">
+          <IAlert />
+          <span><b>{author?.name ?? nt('msg.someone')}</b> {n === 1 ? nt('msg.failOnce') : nt('msg.failTimes', { n })}</span>
+        </span>
+        <span className="nx-fail__when">
+          <span className="nx-mono">{n === 1 ? clock(first, locale) : clockRange(first, item.at, locale)}</span>
+          {reason && <span className="nx-fail__why">{reason}</span>}
+          <IChevronRight className="nx-fail__chev" />
+        </span>
       </button>
       {open && (
         <ol className="nx-fail__list" data-fresh={clicked || undefined}>
@@ -822,7 +844,11 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     if (!useCards.getState().loaded[convoId]) void useCards.getState().load(convoId)
   }, [convoId])
   const answers = useCardAnswers(convoId)
-  const items = useMemo(() => transcriptItems(raw, me, answers), [raw, me, answers])
+  // openedStarts is left out of the dependencies on purpose. A failure enters it
+  // only when it already starts its line, so adding it changes none of the rows
+  // drawn now. The rows it affects come with an older page, which changes raw,
+  // and that rebuild reads the set as it is then.
+  const items = useMemo(() => transcriptItems(raw, me, answers, openedStarts), [raw, me, answers])
   useRoomTokens(convoId, items)
 
   // Messages present at open never animate; anything after does, once.
@@ -833,19 +859,12 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     firstPaint.current = false
   }
 
-  // Virtuoso keeps its scroll anchor on prepend only if firstItemIndex drops
-  // by exactly the number of rows added above. Items are a filtered view of
-  // the store, so anchor on the first row we ever showed and count how far
-  // it has moved down. The row is found by a message of it: a work run or a
-  // failure line changes its key as messages join it.
-  const anchorKey = useRef<string | null>(null)
-  if (anchorKey.current === null && items.length > 0) anchorKey.current = keyOf(rowMessages(items[0])[0])
-  let anchorIndex = anchorKey.current ? rowIndexOf(items, anchorKey.current) : 0
-  if (anchorIndex < 0) {
-    anchorKey.current = items[0] ? keyOf(rowMessages(items[0])[0]) : null
-    anchorIndex = 0
-  }
-  const firstItemIndex = VIRTUOSO_FIRST_INDEX_BASE - anchorIndex
+  // Items are a filtered view of the store, so Virtuoso's anchor is counted
+  // from the first row this list showed (listAnchor).
+  const anchorId = useRef<string | null>(null)
+  const anchor = listAnchor(items, anchorId.current)
+  anchorId.current = anchor.id
+  const firstItemIndex = VIRTUOSO_FIRST_INDEX_BASE - anchor.index
 
   const [float] = useState(createDayFloat)
   float.label = (day) => dayLabel(new Date(day), locale, nt('msg.today'), nt('msg.yesterday'))
@@ -897,7 +916,7 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     const changed = await loadOlderUntilShown(
       () => useMessages.getState().loadOlder(convoId),
       rows,
-      (list) => transcriptKeys(list, me, useCards.getState().answers[convoId] ?? NO_ANSWERS),
+      (list) => transcriptKeys(list, me, useCards.getState().answers[convoId] ?? NO_ANSWERS, openedStarts),
       () => mounted.current,
     )
     if (changed && pinned && mounted.current) ref.current?.scrollToIndex({ index: 'LAST', align: 'end' })

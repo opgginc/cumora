@@ -321,7 +321,13 @@ function mergeFetchedMessages(current: Message[] | undefined, incoming: Message[
 
   for (const m of current) {
     if (incomingIds.has(m.id)) continue
-    if (m.clientId && incomingClientIds.has(m.clientId)) continue
+    // Fork: only a bubble still waiting for its server id carries its client
+    // id as its id (sendUserMessage), so only it is the fetched row with that
+    // client id. A row the server already gave an id stays: runtime notices
+    // handed one client id on to the next notice of the same error (before
+    // server/src/fork/engineNotice.ts gave each window its own), and dropping
+    // the held one took the first failure out of an opened failure line.
+    if (m.clientId && m.id === m.clientId && incomingClientIds.has(m.clientId)) continue
     // A fetch response can be older than the WS events already applied to this
     // store. Never let that snapshot delete a message the UI has already seen;
     // later fresher fetches will merge into the same row by id.

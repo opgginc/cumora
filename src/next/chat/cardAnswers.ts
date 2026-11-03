@@ -36,17 +36,17 @@ export function answerKind(answers: Answers, m: { id: string; clientId?: string 
   return (answers.get(m.id) ?? (m.clientId === undefined ? undefined : answers.get(m.clientId)))?.kind
 }
 
-/** The rows the transcript draws (buildItems). The reply that answered a
- *  question is a note; a secret's reply only says that it was sent, which its
- *  card already shows, so it is left out. */
-export function transcriptItems(messages: Message[], me: string | null, answers: Answers): Item[] {
+/** The rows the transcript draws (buildItems, which takes `opened` as is).
+ *  The reply that answered a question is a note; a secret's reply only says
+ *  that it was sent, which its card already shows, so it is left out. */
+export function transcriptItems(messages: Message[], me: string | null, answers: Answers, opened?: ReadonlySet<string>): Item[] {
   const shown = answers.size === 0 ? messages : messages.filter((m) => answerKind(answers, m) !== 'secret')
-  return buildItems(shown, me, (m) => answerKind(answers, m) === 'choice')
+  return buildItems(shown, me, (m) => answerKind(answers, m) === 'choice', opened)
 }
 
 /** The keys of the rows the transcript draws, for loadOlderUntilShown. */
-export function transcriptKeys(messages: Message[], me: string | null, answers: Answers): string[] {
-  return transcriptItems(messages, me, answers).map((it) => it.key)
+export function transcriptKeys(messages: Message[], me: string | null, answers: Answers, opened?: ReadonlySet<string>): string[] {
+  return transcriptItems(messages, me, answers, opened).map((it) => it.key)
 }
 
 /** The question card a quote is about: the question itself, or the reply that answered it. */
