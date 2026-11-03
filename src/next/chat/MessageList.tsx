@@ -557,17 +557,28 @@ const openFailures = new Set<string>()
  *  under the reader later. */
 const openedStarts = new Set<string>()
 
+/** Records a line's open state in both sets. FailureLine calls it from one
+ *  effect, which runs for a line opened by a click and for one that comes back
+ *  open alike, so a line drawn open never misses its start. */
+function markOpen(msgs: Message[], open: boolean) {
+  if (open) openedStarts.add(msgs[0].id)
+  for (const m of msgs) {
+    if (open) openFailures.add(m.id)
+    else openFailures.delete(m.id)
+  }
+}
+
 /** One agent's engine failures in a row (buildItems), as one line: who, how
  *  many times and when, and the last line of the latest error. A click opens
  *  every failure's text. */
 function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; author: Participant | undefined }) {
   const nt = useNT()
   const locale = useLocale()
-  const [open, setOpen] = useState(() => {
-    const was = item.msgs.some((m) => openFailures.has(m.id))
-    if (was) openedStarts.add(item.msgs[0].id)
-    return was
-  })
+  const [open, setOpen] = useState(() => item.msgs.some((m) => openFailures.has(m.id)))
+  // After the commit, not during a render. A page that could join the line
+  // arrives over the network later, and React runs pending effects before it
+  // renders that page.
+  useEffect(() => markOpen(item.msgs, open), [item.msgs, open])
   // Only a click plays the entrance; a line that comes back open is drawn at once.
   const [clicked, setClicked] = useState(false)
   const texts = item.msgs.map((m) => failureText(m) ?? '')
@@ -575,11 +586,6 @@ function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; 
   const first = createdAt(item.msgs[0])
   const reason = failureReason(texts[n - 1])
   const toggle = () => {
-    if (!open) openedStarts.add(item.msgs[0].id)
-    for (const m of item.msgs) {
-      if (open) openFailures.delete(m.id)
-      else openFailures.add(m.id)
-    }
     setOpen(!open)
     setClicked(true)
   }
@@ -838,8 +844,10 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     if (!useCards.getState().loaded[convoId]) void useCards.getState().load(convoId)
   }, [convoId])
   const answers = useCardAnswers(convoId)
-  // openedStarts is not a dependency: a failure it gains already starts its
-  // line, so the rows drawn stay the same, and the page it acts on changes raw.
+  // openedStarts is left out of the dependencies on purpose. A failure enters it
+  // only when it already starts its line, so adding it changes none of the rows
+  // drawn now. The rows it affects come with an older page, which changes raw,
+  // and that rebuild reads the set as it is then.
   const items = useMemo(() => transcriptItems(raw, me, answers, openedStarts), [raw, me, answers])
   useRoomTokens(convoId, items)
 

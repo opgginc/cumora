@@ -224,6 +224,43 @@ describe('message history after reconnect', () => {
   })
 })
 
+describe('rows that share a client id', () => {
+  // Before server/src/fork/engineNotice.ts gave each window its own dedupe key,
+  // the runtime handed a notice's client id on to the next notice of the same
+  // error, so the store can hold a server row whose client id another row has.
+  const shared = 'runtime-notice:same'
+  const notice = (sequence: number, clientId?: string) => ({
+    ...messages(sequence, sequence)[0], authorId: 'bot', kind: 'system', clientId,
+    body: JSON.stringify({ kind: 'notice', noticeKind: 'byoa_engine_failed', text: 'Bot could not run on local claude: local claude failed (exit 1): refused\nWake the agent again.' }),
+  }) as ApiMessage
+  const swap = (list: ApiMessage[], ...rows: ApiMessage[]) => list.map((m) => rows.find((r) => r.sequence === m.sequence) ?? m)
+  const ids = (store: ReturnType<typeof setup>['store']) => store.getState().byConvo.chat.map((m) => m.id)
+
+  it('a reload keeps a held notice when a newer one comes back with its client id', async () => {
+    const { store } = setup(160, swap(messages(1, 80), notice(70, shared)), swap(messages(1, 160), notice(70), notice(150, shared)))
+    await store.getState().reloadConversation('chat')
+    assert.ok(ids(store).includes('m-70'), 'the held notice was dropped for the newer one')
+    assert.ok(ids(store).includes('m-150'))
+  })
+
+  it('an older page carrying that client id leaves the held row, so an opened failure line keeps its start', async () => {
+    const { store } = setup(160, swap(messages(81, 160), notice(81, shared)), swap(messages(1, 160), notice(80, shared), notice(81, shared)))
+    store.setState({ hasMoreOlder: { chat: true }, loaded: new Set(['chat']) })
+    await store.getState().loadOlder('chat')
+    assert.ok(ids(store).includes('m-81'), 'the older page dropped the held notice')
+    const lines = transcriptItems(store.getState().byConvo.chat, 'user', NO_ANSWERS, new Set(['m-81']))
+      .flatMap((it) => (it.type === 'fail' ? [it.msgs.map((m) => m.id)] : []))
+    assert.deepEqual(lines, [['m-80'], ['m-81']])
+  })
+
+  it('a fetched row still replaces the bubble that waits for its server id', async () => {
+    const bubble = { ...messages(81, 81)[0], id: 'temp-1', clientId: 'temp-1', sequence: Number.MAX_SAFE_INTEGER, unconfirmed: true }
+    const { store } = setup(81, [...messages(1, 80), bubble], [...messages(1, 80), { ...messages(81, 81)[0], clientId: 'temp-1' } as ApiMessage])
+    await store.getState().reloadConversation('chat')
+    assert.deepEqual(ids(store).slice(-2), ['m-80', 'm-81'])
+  })
+})
+
 describe('older pages the redesigned transcript does not draw', () => {
   /** Calendar firings, which buildItems leaves out of the transcript. */
   const firings = (first: number, last: number): ApiMessage[] =>
