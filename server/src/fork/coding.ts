@@ -290,8 +290,10 @@ export async function threadDetail(server: T3Server, threadId: string, scheme: s
     // The first read only learns how long the timeline is.
     const { thread } = await t3.call<T3Timeline>('t3_thread_read', { threadId, limit: 1, maxCharsPerItem: 1 })
     const items: T3Timeline['items'] = []
-    for (let after = Math.max(-1, thread.itemCount - TAIL - 1); ;) {
-      const page = await t3.call<T3Timeline>('t3_thread_read', { threadId, afterPosition: after, limit: 100, maxCharsPerItem: T3_TEXT })
+    // T3 refuses an afterPosition below 0 and reads from the start without
+    // one, so a timeline of TAIL items or fewer is read without it.
+    for (let after = thread.itemCount > TAIL ? thread.itemCount - TAIL - 1 : undefined; ;) {
+      const page = await t3.call<T3Timeline>('t3_thread_read', { threadId, ...(after === undefined ? {} : { afterPosition: after }), limit: 100, maxCharsPerItem: T3_TEXT })
       items.push(...page.items)
       if (!page.hasMore || page.nextPosition === null) break
       after = page.nextPosition
