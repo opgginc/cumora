@@ -18,6 +18,11 @@ const { outputText } = ts.transpileModule(source, {
 })
 const loadStore = compileFunction(outputText, ['require', 'exports', 'console'])
 
+/** The client's ApiError (message plus HTTP status), which the store checks with instanceof. */
+class ApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message) }
+}
+
 function messages(first: number, last: number): ApiMessage[] {
   return Array.from({ length: last - first + 1 }, (_, index) => {
     const sequence = first + index
@@ -37,7 +42,7 @@ function setup(last: number, cache: Message[] = messages(1, 80), serverMessages 
         .slice(-(options.limit ?? 80))
     },
   }
-  // The chat list and the selection, both of which a room the server no longer has leaves.
+  // Stand-ins for the chat list and the selection; a room the server answers 404 for must leave both.
   const rooms = create(() => ({ list: [{ id: 'chat' }, { id: 'other' }] }))
   const app = create<{ selectedConversationId: string | null; selectConversation: (id: string | null) => void }>((set) => ({
     selectedConversationId: 'chat',
@@ -45,7 +50,7 @@ function setup(last: number, cache: Message[] = messages(1, 80), serverMessages 
   }))
   const dependencies: Record<string, unknown> = {
     zustand: { create },
-    '@/api/client': { api },
+    '@/api/client': { api, ApiError },
     '@/lib/replyCount': { applyReplyCountDelta },
     '@/stores/auth': { getMeId: () => 'user' },
     '@/stores/app': { useApp: app },
@@ -67,13 +72,10 @@ function setup(last: number, cache: Message[] = messages(1, 80), serverMessages 
 }
 
 describe('a room the server answers 404 for', () => {
-  // Deleted, or the membership is gone. A room still in the chat list is opened
-  // straight back by the redesign's wide layouts (they reopen the last room
-  // whenever none is open), and every pass fetches it again: thousands of
-  // requests in ten seconds.
+  // Why the row has to go: the comment on the 404 branch of loadConversation.
   it('leaves the chat list along with the selection', async () => {
     const { store, api, rooms, app } = setup(80, [])
-    api.getMessages = async () => { throw new Error('not found (404)') }
+    api.getMessages = async () => { throw new ApiError('not found (404)', 404) }
     await store.getState().loadConversation('chat')
     assert.deepEqual(rooms.getState().list.map((c) => c.id), ['other'])
     assert.equal(app.getState().selectedConversationId, null)
@@ -84,6 +86,15 @@ describe('a room the server answers 404 for', () => {
     api.getMessages = async () => { throw new Error('Failed to fetch') }
     await store.getState().loadConversation('chat')
     assert.deepEqual(rooms.getState().list.map((c) => c.id), ['chat', 'other'])
+  })
+
+  it('stays listed when a 403 or 500 says "not found"', async () => {
+    for (const status of [403, 500]) {
+      const { store, api, rooms } = setup(80, [])
+      api.getMessages = async () => { throw new ApiError(`participant not found (${status})`, status) }
+      await store.getState().loadConversation('chat')
+      assert.deepEqual(rooms.getState().list.map((c) => c.id), ['chat', 'other'], `status ${status}`)
+    }
   })
 })
 

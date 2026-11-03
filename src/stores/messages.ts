@@ -419,7 +419,10 @@ export const useMessages = create<MessagesState>((set, get) => ({
       // or a stale id leaked in from somewhere). Don't surface a hard error
       // panel for that — silently drop the selection so the chat pane falls
       // back to the "Select a conversation" empty state.
-      if (/\b404\b/.test(msg) || /not found/i.test(msg)) {
+      // By status, not by message: the row goes too (below), also for rooms a
+      // prefetch only touched, and a 403 or 500 whose detail says "not found"
+      // must not take it away.
+      if (err instanceof ApiError && err.status === 404) {
         set((s) => ({
           loading: new Set([...s.loading].filter((x) => x !== id)),
         }))
