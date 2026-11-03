@@ -3,8 +3,8 @@
  * panes (they read the useApp fields that the router projects from the URL);
  * an agent or person peek is the agent drawer (AgentDrawer.tsx), an event
  * peek is the Calendar section's own detail, and the tabs
- * are the redesign's own. The header identity follows whichever agent is
- * working in the room, so a glance says who is busy right now. The room's
+ * are the redesign's own. The header names the room, and in a 1:1 room with
+ * an agent, that agent while it works (panelHead.ts). The room's
  * settings are not a tab: the pencil opens Edit over the chat.
  */
 import { lazy, Suspense, useRef, type ReactNode } from 'react'
@@ -22,6 +22,7 @@ import { HandbookTab } from './HandbookTab'
 import { CodingTab } from './CodingTab'
 import { ComputerTab } from './ComputerTab'
 import { AgentDrawer } from './AgentDrawer'
+import { headerAgent } from './panelHead'
 import { MembersTab } from './MembersTab'
 import { openEdit } from './EditDialog'
 import { FilesTab } from './FilesTab'
@@ -56,7 +57,7 @@ function Classic({ children, layout }: { children: ReactNode; layout: Layout }) 
 function Identity({ c }: { c: Conversation }) {
   const nt = useNT()
   const { live } = useRoomAgents(c)
-  const who = live[0]
+  const who = headerAgent(c.kind, live)
   return (
     <div className="nx-panel__who">
       <AnimatePresence mode="popLayout" initial={false}>
