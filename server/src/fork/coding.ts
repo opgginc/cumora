@@ -55,7 +55,7 @@ const COLD_MS = 60_000
 // T3's statuses of a thread that is still moving (the Coding tab's ACTIVE).
 const MOVING = ['preparing', 'queued', 'starting', 'running', 'waiting'] as const
 // A thread moving or waiting for an answer is listed even when settled in T3,
-// which the tab then shows as moving (CodingTab.tsx isSettled).
+// which the tab then shows as moving (src/next/panel/codingThreads.ts standing).
 const OPEN = [...MOVING, 'question']
 // Same convention as the recorder: relative to the server's cwd, where compose
 // puts the T3 server list and mounts the server's T3 tokens.
