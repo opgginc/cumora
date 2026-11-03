@@ -70,7 +70,7 @@ export interface CodingThread {
    *  the thread waits for the answer to `requestId`. */
   status: string
   runId: string | null
-  /** The question the thread waits for (T3's t3_pending_request_list), or null. */
+  /** The question the thread waits for (T3's t3_pending_request, action "list"), or null. */
   requestId: string | null
   /** `state` is null until T3 has read the pull request's host. */
   pullRequests: Array<{ number: number; url: string; state: string | null }>
