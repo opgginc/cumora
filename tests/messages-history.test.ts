@@ -229,11 +229,11 @@ describe('older pages the redesigned transcript does not draw', () => {
   const firings = (first: number, last: number): ApiMessage[] =>
     messages(first, last).map((m) => ({ ...m, authorId: 'calendar', kind: 'system' }))
   type Store = ReturnType<typeof setup>['store']
-  const drawn = (store: Store, answers: Answers = NO_ANSWERS) => transcriptItems(store.getState().byConvo.chat, 'user', answers).length
+  const drawn = (store: Store, answers: Answers = NO_ANSWERS) => transcriptItems(store.getState().byConvo.chat, 'user', answers, new Set()).length
   const showOlder = (store: Store, answers: Answers = NO_ANSWERS, alive = () => true) => loadOlderUntilShown(
     () => store.getState().loadOlder('chat'),
     () => store.getState().byConvo.chat,
-    (list) => transcriptKeys(list, 'user', answers),
+    (list) => transcriptKeys(list, 'user', answers, new Set()),
     alive,
   )
 

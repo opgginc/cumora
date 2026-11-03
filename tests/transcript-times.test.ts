@@ -22,24 +22,24 @@ const stamps = (items: Item[]) => items.map((it) => (it.type === 'msg' ? it.stam
 
 test('a burst gets one time, then one more once the clock reads 5 minutes later', () => {
   // 14:05:41 → 14:10:40 is 4 min 59 s, but the reader sees 02:05 and 02:10.
-  const items = buildItems([msg('a', '14:05:41'), msg('a', '14:05:58'), msg('a', '14:09:00'), msg('a', '14:10:40')], 'me', () => false)
+  const items = buildItems([msg('a', '14:05:41'), msg('a', '14:05:58'), msg('a', '14:09:00'), msg('a', '14:10:40')], 'me', () => false, new Set())
   assert.deepEqual(stamps(items), ['turn', 'hidden', 'hidden', 'slot'])
 })
 
 test('the reply that answered a question card is a line, so the agent speaks again in a new turn', () => {
   const answer = msg('me', '22:12:10')
-  const items = buildItems([msg('a', '22:10:00'), answer, msg('a', '22:12:40')], 'me', (m) => m.id === answer.id)
+  const items = buildItems([msg('a', '22:10:00'), answer, msg('a', '22:12:40')], 'me', (m) => m.id === answer.id, new Set())
   assert.deepEqual(stamps(items), ['turn', 'answer', 'turn'])
 })
 
 test('a new sender starts a turn, and only a silence of 15 minutes draws a line', () => {
-  const items = buildItems([msg('a', '14:10:40'), msg('me', '18:28:03'), msg('a', '18:29:20'), msg('a', '18:38:05')], 'me', () => false)
+  const items = buildItems([msg('a', '14:10:40'), msg('me', '18:28:03'), msg('a', '18:29:20'), msg('a', '18:38:05')], 'me', () => false, new Set())
   assert.deepEqual(stamps(items), ['turn', 'turn', 'turn', 'slot'])
   assert.deepEqual(items.map((it) => it.pause !== null), [false, true, false, false])
 })
 
 test('a pause ends the turn; a new day shows its chip, never a pause line', () => {
-  const items = buildItems([msg('a', '10:00:00'), msg('a', '10:20:00'), msg('a', '2026-10-20T09:00:00')], 'me', () => false)
+  const items = buildItems([msg('a', '10:00:00'), msg('a', '10:20:00'), msg('a', '2026-10-20T09:00:00')], 'me', () => false, new Set())
   assert.deepEqual(stamps(items), ['turn', 'turn', 'turn'])
   assert.deepEqual(items.map((it) => [it.day !== null, it.pause !== null]), [[true, false], [false, true], [true, false]])
 })

@@ -798,33 +798,40 @@
   .nx-answer::before { content: ""; position: absolute; inset: -10px -8px; }
 }
 /* One agent's engine failures in a row (MessageList FailureLine): a pill like
-   the answer line, and under it, once opened, every failure's text. The
-   reason gives way first when the pill runs out of width. */
+   the answer line, and under it, once opened, every failure's text. Where one
+   line cannot hold the pill (a phone), its two halves wrap apart: who failed
+   on the first line, when and why on the second, where the reason is cut
+   short if need be, since the opened list holds it whole. So the pill never
+   reaches past the transcript, however narrow. */
 .nx-fail { flex-direction: column; align-items: center; gap: 8px; }
 .nx-fail__pill {
   position: relative;
   display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 4px;
+  column-gap: 8px;
   max-width: 100%;
   padding: 4px 12px;
   border: 0;
-  border-radius: 999px;
+  /* Browsers shrink a radius over half the height, so one line stays a pill and two lines get round corners. */
+  border-radius: var(--radius-lg);
   background: var(--muted);
   font: inherit;
   color: inherit;
   transition: color var(--duration-quick);
 }
+.nx-fail__who, .nx-fail__when { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .nx-fail__pill svg { flex: none; width: 14px; height: 14px; }
-.nx-fail__pill > svg:first-child { color: var(--destructive); }
-.nx-fail__pill > span { flex: none; white-space: nowrap; }
-/* The empty alternative keeps screen readers from reading each dot; an engine
-   without the syntax drops that declaration and keeps the plain one. */
-.nx-fail__pill > span + span::before { content: "·"; content: "·" / ""; margin-right: 4px; }
+.nx-fail__who > svg { color: var(--destructive); }
+.nx-fail__when > * { flex: none; white-space: nowrap; }
 .nx-fail__pill b { font-weight: 500; color: var(--foreground); }
 /* Mono reads larger than the sans beside it, so the times drop a step, like .nx-agenda__head. */
 .nx-fail__pill .nx-mono { font-size: var(--text-micro); }
-.nx-fail__pill > .nx-fail__why { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nx-fail__when > .nx-fail__why { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The empty alternative keeps screen readers from reading the dot; an engine
+   without the syntax drops that declaration and keeps the plain one. */
+.nx-fail__why::before { content: "·"; content: "·" / ""; margin-right: 4px; }
 .nx-fail__chev { transition: transform var(--duration-quick) var(--ease-smooth-out); }
 .nx-fail__pill[aria-expanded="true"] .nx-fail__chev { transform: rotate(90deg); }
 @media (hover: hover) {

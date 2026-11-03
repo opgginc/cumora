@@ -63,9 +63,11 @@ function sameDay(a: Date, b: Date): boolean {
  * reply that answered a question card (`isAnswer`) is an answer line, which
  * ends the turn like any line. An agent's engine failures with nothing drawn
  * between them are one failure line, across pauses (an outage fails each
- * routine run again half an hour later) but not across days.
+ * routine run again half an hour later) but not across days, and never into
+ * a line that was drawn open: `opened` holds the first failure of each such
+ * line, and each of them starts a line of its own.
  */
-export function buildItems(messages: Message[], meId: string | null, isAnswer: (m: Message) => boolean): Item[] {
+export function buildItems(messages: Message[], meId: string | null, isAnswer: (m: Message) => boolean, opened: ReadonlySet<string>): Item[] {
   const out: Item[] = []
   let prevAt: Date | null = null
   let shownMin = 0
@@ -96,7 +98,10 @@ export function buildItems(messages: Message[], meId: string | null, isAnswer: (
       // an opened line) goes by its messages (rowIndexOf). The server id, not
       // keyOf: notices posted before server/src/fork/engineNotice.ts
       // noticeDedupeKey can share a client_id.
-      if (last?.type === 'fail' && last.authorId === m.authorId && day === null) {
+      // An opened line lists every failure it holds, so an older page joining
+      // it would grow the row the reader is in from its top, with no row added
+      // above for the list to keep its anchor by: older failures stop above it.
+      if (last?.type === 'fail' && last.authorId === m.authorId && day === null && !opened.has(m.id)) {
         last.msgs.push(m)
         last.key = `f-${m.id}`
         last.at = at

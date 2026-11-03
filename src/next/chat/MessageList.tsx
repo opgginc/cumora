@@ -550,6 +550,12 @@ function AnswerLine({ msg, author, rise, hl }: { msg: Message; author: Participa
  *  unmounts rows that scroll away, and a line remounts under a new key when a
  *  failure joins it, so a line stays open while any of its failures is here. */
 const openFailures = new Set<string>()
+/** The first failure of each line drawn open, which buildItems never joins to
+ *  the failures before it: an older page then lands above the line as rows of
+ *  its own, which the list keeps its anchor by, instead of inside the line the
+ *  reader is in. Kept once the line closes, so the rows above it never change
+ *  under the reader later. */
+const openedStarts = new Set<string>()
 
 /** One agent's engine failures in a row (buildItems), as one line: who, how
  *  many times and when, and the last line of the latest error. A click opens
@@ -557,7 +563,11 @@ const openFailures = new Set<string>()
 function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; author: Participant | undefined }) {
   const nt = useNT()
   const locale = useLocale()
-  const [open, setOpen] = useState(() => item.msgs.some((m) => openFailures.has(m.id)))
+  const [open, setOpen] = useState(() => {
+    const was = item.msgs.some((m) => openFailures.has(m.id))
+    if (was) openedStarts.add(item.msgs[0].id)
+    return was
+  })
   // Only a click plays the entrance; a line that comes back open is drawn at once.
   const [clicked, setClicked] = useState(false)
   const texts = item.msgs.map((m) => failureText(m) ?? '')
@@ -565,6 +575,7 @@ function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; 
   const first = createdAt(item.msgs[0])
   const reason = failureReason(texts[n - 1])
   const toggle = () => {
+    if (!open) openedStarts.add(item.msgs[0].id)
     for (const m of item.msgs) {
       if (open) openFailures.delete(m.id)
       else openFailures.add(m.id)
@@ -574,12 +585,17 @@ function FailureLine({ item, author }: { item: Extract<Item, { type: 'fail' }>; 
   }
   return (
     <div id={`m-${item.msgs[0].id}`} className="nx-line nx-fail">
+      {/* Two halves, who and when-and-why, which wrap apart where one line is too narrow (chat.css). */}
       <button type="button" className="nx-fail__pill" aria-expanded={open} onClick={toggle}>
-        <IAlert />
-        <span><b>{author?.name ?? nt('msg.someone')}</b> {n === 1 ? nt('msg.failOnce') : nt('msg.failTimes', { n })}</span>
-        <span className="nx-mono">{n === 1 ? clock(first, locale) : clockRange(first, item.at, locale)}</span>
-        {reason && <span className="nx-fail__why">{reason}</span>}
-        <IChevronRight className="nx-fail__chev" />
+        <span className="nx-fail__who">
+          <IAlert />
+          <span><b>{author?.name ?? nt('msg.someone')}</b> {n === 1 ? nt('msg.failOnce') : nt('msg.failTimes', { n })}</span>
+        </span>
+        <span className="nx-fail__when">
+          <span className="nx-mono">{n === 1 ? clock(first, locale) : clockRange(first, item.at, locale)}</span>
+          {reason && <span className="nx-fail__why">{reason}</span>}
+          <IChevronRight className="nx-fail__chev" />
+        </span>
       </button>
       {open && (
         <ol className="nx-fail__list" data-fresh={clicked || undefined}>
@@ -822,7 +838,9 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     if (!useCards.getState().loaded[convoId]) void useCards.getState().load(convoId)
   }, [convoId])
   const answers = useCardAnswers(convoId)
-  const items = useMemo(() => transcriptItems(raw, me, answers), [raw, me, answers])
+  // openedStarts is not a dependency: a failure it gains already starts its
+  // line, so the rows drawn stay the same, and the page it acts on changes raw.
+  const items = useMemo(() => transcriptItems(raw, me, answers, openedStarts), [raw, me, answers])
   useRoomTokens(convoId, items)
 
   // Messages present at open never animate; anything after does, once.
@@ -897,7 +915,7 @@ export function MessageList({ convoId, bottomInset, find }: { convoId: string; b
     const changed = await loadOlderUntilShown(
       () => useMessages.getState().loadOlder(convoId),
       rows,
-      (list) => transcriptKeys(list, me, useCards.getState().answers[convoId] ?? NO_ANSWERS),
+      (list) => transcriptKeys(list, me, useCards.getState().answers[convoId] ?? NO_ANSWERS, openedStarts),
       () => mounted.current,
     )
     if (changed && pinned && mounted.current) ref.current?.scrollToIndex({ index: 'LAST', align: 'end' })
