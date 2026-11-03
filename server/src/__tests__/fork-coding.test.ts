@@ -357,7 +357,7 @@ test('a poll unlists what a whole read no longer finds, keeps the copy when the 
   assert.deepEqual(store.codingWakesDue(t3.name, ['completed']), [], 'its agent is not woken twice for one rest')
 })
 
-test('a wake names T3’s current tools, keeps the secret guard in the line the daemon shows, and shows the room none of the thread’s text', () => {
+test('a wake names T3’s current tools, keeps the secret guard in the line the daemon shows, asks for the title without the mark and no link, and carries none of the thread’s text', () => {
   // The longer of the two thread id forms T3 gives an MCP launch (the other is mcp:<uuid>).
   const threadId = `mcp:launch:${'a'.repeat(64)}`
   // A T3 request id nests its turn's id and the provider's request id, each
@@ -372,8 +372,9 @@ test('a wake names T3’s current tools, keeps the secret guard in the line the 
   const asked = wakeOf(copy, 'room-1')
   assert.match(asked.agentPrompt, /t3_pending_request \(action "list", then "read"\) on the T3 MCP server t3code-m4 \(threadId mcp:launch:a{64}\)/)
   assert.match(asked.agentPrompt, /action "respond"/)
-  // The thread's title is agent text that can quote any room.
-  assert.doesNotMatch(asked.agentPrompt, /tell this room[^.]*title/, 'the room is not told the title')
+  // The owner finds the thread in T3 by its title, where T3's tools would have the agent post a link.
+  assert.match(asked.agentPrompt, /tell this room[^.]*title without the \[@…\] mark/, 'the room is told the title without the agent’s mark')
+  assert.match(asked.agentPrompt, /post no link/, 'and gets no link')
   for (const word of ['owner', 'project', 'Coding tab']) assert.ok(asked.agentPrompt.includes(word), `the owner learns where to find the thread: ${word}`)
   // The daemon shows a due wake as this line, cut at DIGEST_PREVIEW (agents/computer/daemon.ts).
   const line = `[calendar:due] ${[asked.title, asked.agentPrompt].filter(Boolean).join(' — ')}`.replace(/\s+/g, ' ').slice(0, DIGEST_PREVIEW)
