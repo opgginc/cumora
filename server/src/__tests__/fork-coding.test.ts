@@ -199,13 +199,17 @@ test('a message T3 cut loses its unfinished key or token before redaction, so no
 test('a detail asks for no question without a pending request, and refuses a scheme the T3 app does not answer to', async (t) => {
   const calls = fakeT3(t, (name) => {
     if (name === 't3_environment_read') return { environmentId: 'env-1' }
-    if (name === 't3_thread_read') return timeline({}, [item(0, 'user_message', 'Fix the header')], 0, false)
+    // 200 items: the longest timeline the detail reads whole, from its start.
+    if (name === 't3_thread_read') return timeline({ itemCount: 200 }, [item(0, 'user_message', 'Fix the header')], 0, false)
     throw new Error(`unexpected ${name}`)
   })
   const detail = await threadDetail(server('tok'), 'th-1', 't3code')
   assert.equal(detail.link, 't3code://threads/env-1/th-1')
   assert.deepEqual(detail.questions, [])
-  assert.ok(calls.includes('t3_thread_read {"threadId":"th-1","afterPosition":-1,"limit":100,"maxCharsPerItem":8000}'), 'a short timeline is read from its start')
+  assert.ok(
+    calls.includes('t3_thread_read {"threadId":"th-1","limit":100,"maxCharsPerItem":8000}'),
+    `a short timeline is read from its start without afterPosition, which T3 refuses below 0: ${calls.join(' | ')}`,
+  )
 
   const before = calls.length
   await assert.rejects(threadDetail(server('tok'), 'th-1', 'javascript'), /not one the T3 app answers to/)
