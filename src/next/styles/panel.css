@@ -464,9 +464,36 @@ button.nx-hb-note { transition: background-color var(--duration-quick); }
 .nx-coding-list { animation: nx-rise var(--duration-fast) var(--ease-smooth-out) both; }
 /* Virtuoso wraps each row, so the rule between rows goes on the wrappers; set
    by index, a row keeps its height whichever rows are mounted beside it. */
-.nx-coding-rows > :not([data-index="0"]) { border-top: 1px solid var(--border); }
-/* A thread settled in T3 is dealt with, so its row recedes; hover still lights the title. */
-.nx-coding[data-settled] { color: var(--muted-foreground); }
+.nx-coding-group [data-index]:not([data-index="0"]) { border-top: 1px solid var(--border); }
+/* The settled group is dealt with, so it recedes; hover still lights a title. */
+.nx-coding-group[data-standing="settled"] { color: var(--muted-foreground); }
+/* The card clips its first head to its corners. `clip`, unlike `hidden`,
+   makes no scroller, so the heads still stick to the panel's or page's. */
+.nx-coding-rows { overflow: clip; }
+/* A group's head stays at the top of the scroller while its rows scroll under
+   it: --muted is translucent, so it sits on the card, and it covers the rows'
+   pull request chips (z-index 1). The selector outweighs `.nx-coding`'s
+   position below; the icon slot and its colours are the rows'. */
+.nx-coding-group > .nx-coding-group__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(var(--muted), var(--muted)) var(--card);
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+.nx-coding-group + .nx-coding-group > .nx-coding-group__head { border-top: 1px solid var(--border); }
+.nx-coding-group__head .nx-mono { color: var(--muted-foreground); }
+/* A sticky box stops at its scroller's content edge, and the panel body pads
+   12px (as .nx-hb-bar does). */
+.nx-panel__body .nx-coding-group > .nx-coding-group__head { top: -12px; }
 /* A row opens its thread: the link stretches over the whole row, and the last
    pull request's chip sits above it and opens that pull request. Its link
    rules are the Routines rows' (below). */

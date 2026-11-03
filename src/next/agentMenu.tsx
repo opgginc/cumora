@@ -29,7 +29,8 @@ import { getRoute, href, navigate, useRoute, withRoute } from './router'
 import { Avatar } from './ui/Avatar'
 import { anchorFrom, Menu, type MenuAnchor, type MenuEntry, type MenuItem } from './ui/primitives'
 import { IAgents, IAt, ICode, ICompose, IComputer, ICopy, IStop } from './ui/icons'
-import { isOpenThread, look, newestThreads, threadTime, useCoding, type Thread } from './panel/CodingTab'
+import { look, threadTime, useCoding } from './panel/CodingTab'
+import { isOpenThread, threadGroups, type Thread } from './panel/codingThreads'
 import { threadKey } from './panel/codingText'
 import { agentState, isLive, StateText, useHost, useSeesWork } from './sections/agents/shared'
 import { bindAgentRefs, hasAgentMenu } from './agentRefs'
@@ -137,7 +138,8 @@ export function AgentMenuHost() {
 
   if (!p) return <Menu open={false} anchor={null} entries={[]} onClose={close} />
 
-  const threads = working && coding ? newestThreads(coding).map((x) => x.t) : []
+  // In the Coding list's order, so the menu's first threads are its top rows.
+  const threads = working && coding ? threadGroups(coding).flatMap((g) => g.rows.map((x) => x.t)) : []
   const running = threads.filter(isOpenThread)
   const state = agentState(p, host)
   const live = isLive(state)
