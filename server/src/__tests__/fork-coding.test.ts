@@ -8,8 +8,11 @@
  * requests, a thread without a pull request list, and the session closed. A
  * thread's detail reads the end of a timeline T3 pages from its start, and
  * shows agent text, so it is pinned that the text is redacted before its cut.
- * A wake is posted where the whole room can read it, so it is pinned that it
- * carries no text of the thread.
+ * A group room lists only the threads launched from it, so it is pinned that
+ * a thread joins that room's list once its launching turn has recorded a
+ * call, and that a thread of no one room joins none. A wake is posted where
+ * the whole room can read it, so it is pinned that it carries no text of the
+ * thread.
  */
 import { test, after, type TestContext } from 'node:test'
 import assert from 'node:assert/strict'
@@ -223,10 +226,16 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
   const [{ pool }, { getForkStore }] = await Promise.all([import('../db/pool.js'), import('../fork/store.js')])
   let role = 'member'
   let agent = true
-  t.mock.method(pool, 'query', async () => ({ rows: [{ role, agent }] }))
+  // Whether the viewer is a member of the room a list asks about, and the room it was asked about.
+  let member = true
+  const asked: unknown[] = []
+  t.mock.method(pool, 'query', async (_sql: string, params: unknown[]) => {
+    asked.push(params[3])
+    return { rows: [{ role, agent, member }] }
+  })
   // The store opens in the temporary root: coding.ts loaded it from there.
   ;(await getForkStore()).saveCodingThreads([{
-    server: 't3code', threadId: 'th-1', companyId: 'c1', agentId: 'bot', conversationId: null, title: 'Fix the header',
+    server: 't3code', threadId: 'th-1', companyId: 'c1', agentId: 'bot', title: 'Fix the header',
     status: 'completed', runId: 'run-1', requestId: null, pullRequests: [], createdAt: '2026-10-20T01:00:00.000Z',
     updatedAt: '2026-10-20T01:05:00.000Z', settledAt: null, woken: null,
   }])
@@ -273,14 +282,14 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
   assert.equal(gone.body?.link, null)
 
   // The list route goes through the same gate, one query for the role and the agent.
-  const list = async () => {
+  const list = async (query: Record<string, unknown> = {}) => {
     const res = {
       code: 200,
       body: null as { threads: Array<{ threadId: string; settledAt: string | null }> } | null,
       status(code: number) { this.code = code; return this },
       json(body: never) { this.body = body; return this },
     }
-    await agentCoding(async () => ({ userId: 'u1', companyId: 'c1' }), { params: { agentId: 'bot' } } as never, res as never)
+    await agentCoding(async () => ({ userId: 'u1', companyId: 'c1' }), { params: { agentId: 'bot' }, query } as never, res as never)
     return res
   }
   assert.deepEqual((await list()).body?.threads, [], 'a T3 server taken off the list lists nothing')
@@ -288,16 +297,33 @@ test('the detail route answers owners and admins only, and reads T3 only for a t
   assert.deepEqual((await list()).body?.threads.map((x) => x.threadId), ['th-1'])
   // Of the settled threads, the list keeps those settled within three days.
   const settled = (threadId: string, hoursAgo: number) => ({
-    server: 't3code', threadId, companyId: 'c1', agentId: 'bot', conversationId: null, title: threadId, status: 'completed',
+    server: 't3code', threadId, companyId: 'c1', agentId: 'bot', title: threadId, status: 'completed',
     runId: `run-${threadId}`, requestId: null, pullRequests: [], createdAt: '2026-10-20T01:00:00.000Z',
     updatedAt: new Date().toISOString(), settledAt: new Date(Date.now() - hoursAgo * 3_600_000).toISOString(), woken: null,
   })
   ;(await getForkStore()).saveCodingThreads([settled('th-settled', 71), settled('th-settled-long-ago', 73)])
   assert.deepEqual((await list()).body?.threads.map((x) => [x.threadId, x.settledAt !== null]), [['th-settled', true], ['th-1', false]])
+  // A group room's tab asks for the threads launched from it; a 1:1 room's
+  // asks for all of them, those whose room is unknown or elsewhere included.
+  ;(await getForkStore()).setCodingRooms('t3code', [{ threadId: 'th-1', conversationId: 'g-1' }, { threadId: 'th-settled', conversationId: null }])
+  assert.deepEqual((await list({ room: 'g-1' })).body?.threads.map((x) => x.threadId), ['th-1'])
+  assert.equal(asked.at(-1), 'g-1', 'membership is checked for the room asked about')
+  assert.deepEqual((await list({ room: 'g-2' })).body?.threads, [], 'nothing launched from another room')
+  assert.deepEqual((await list()).body?.threads.map((x) => x.threadId), ['th-settled', 'th-1'])
+  assert.ok(!JSON.stringify((await list({ room: 'g-1' })).body).includes('g-1'), 'the answer names no room')
+  // Which threads a room started is news about the room: to someone outside
+  // it, owner or not, the room does not exist.
+  member = false
+  assert.equal((await list({ room: 'g-1' })).code, 404)
+  assert.deepEqual((await list()).body?.threads.map((x) => x.threadId), ['th-settled', 'th-1'], 'a list of no room needs no membership')
+  assert.deepEqual((await list({ room: '' })).body?.threads.map((x) => x.threadId), ['th-settled', 'th-1'], 'and an empty room is no room')
+  assert.equal(asked.at(-1), null)
+  member = true
   agent = false
   assert.equal((await list()).code, 404, 'not an agent of the workspace')
   role = 'member'
   assert.equal((await list()).code, 403, 'a member is refused the list too')
+  assert.equal((await list({ room: 'g-1' })).code, 403, 'also in a room they are in')
 })
 
 test('a poll unlists what a whole read no longer finds, keeps the copy when the read fails, and wakes once for one rest', async (t) => {
@@ -339,7 +365,7 @@ test('a poll unlists what a whole read no longer finds, keeps the copy when the 
   // th-a came to rest a moment ago; its agent is woken for it.
   const rested = store.codingThread('c1', t3.name, 'th-a')
   assert.ok(rested)
-  store.markCodingWoken(t3.name, 'th-a', codingWakeKey(rested), null, 'room')
+  store.markCodingWoken(t3.name, 'th-a', codingWakeKey(rested), null)
 
   down = true
   announced.length = 0
@@ -359,6 +385,71 @@ test('a poll unlists what a whole read no longer finds, keeps the copy when the 
   await poll(t3)
   assert.deepEqual(shown(), ['th-a', 'th-b'])
   assert.deepEqual(store.codingWakesDue(t3.name, ['completed']), [], 'its agent is not woken twice for one rest')
+})
+
+test('a poll finds the room each thread was launched from once its launching turn has recorded a call, and tells the open tabs', async (t) => {
+  process.env.OPENAI_API_KEY ??= 'test-key'
+  process.env.CUMORA_RUNTIME_CLIENT ??= 'http'
+  const [{ pool }, { redis }, { getForkStore }] = await Promise.all([import('../db/pool.js'), import('../redis.js'), import('../fork/store.js')])
+  // The room on the first turn call from each launch on (launchRoom), by the
+  // launch's time; none recorded yet.
+  const calls = new Map<string, string | null>()
+  let lookups = 0
+  // The launch whose lookup fails, as a query does when Postgres goes away.
+  let failing: string | null = null
+  t.mock.method(pool, 'query', async (sql: string, params: unknown[]) => {
+    if (!sql.includes('llm_calls')) return { rows: [{ id: 'bot', company_id: 'c1' }] }
+    lookups += 1
+    const at = String(params[1])
+    if (at === failing) throw new Error('Connection terminated unexpectedly')
+    return { rows: calls.has(at) ? [{ conversation_id: calls.get(at) }] : [] }
+  })
+  const announced: string[] = []
+  t.mock.method(redis, 'publish', (async (_channel: string, message: string) => {
+    announced.push((JSON.parse(message) as { companyId: string }).companyId)
+    return 1
+  }) as never)
+  // Still running, so no wake is due: only where they are listed changes.
+  const group = thread('th-group', 'running', { createdAt: '2026-11-04T01:00:00.000Z' })
+  const board = thread('th-board', 'running', { createdAt: '2026-11-04T02:00:00.000Z' })
+  fakeT3(t, (name) => {
+    if (name === 't3_project_list') return { projects: [{ id: 'p1', deletedAt: null }], nextCursor: null }
+    if (name === 't3_thread_list') return { threads: [group, board], nextCursor: null }
+    if (name === 't3_pending_request') return { requestIds: [] }
+    throw new Error(`unexpected ${name}`)
+  })
+  const t3 = { ...server('tok'), name: 'rooms-t3' }
+  const store = await getForkStore()
+  const listed = (room?: string) =>
+    store.codingThreads('c1', 'bot', { servers: [t3.name], open: ['running'], settledSince: '', settledLimit: 20, room }).map((x) => x.threadId).sort()
+
+  await poll(t3)
+  assert.deepEqual(listed(), ['th-board', 'th-group'], 'a 1:1 room lists them at once')
+  assert.deepEqual(listed('g-1'), [], 'a group room waits for the launching turn to record a call')
+  assert.equal(lookups, 2)
+
+  // The turn that launched th-group answered g-1. th-board's lookup fails:
+  // the poll still saves th-group's room and tells the open tabs.
+  calls.set(group.createdAt, 'g-1')
+  failing = board.createdAt
+  announced.length = 0
+  await poll(t3)
+  assert.deepEqual(listed('g-1'), ['th-group'])
+  assert.deepEqual(announced, ['c1'], 'the open tabs read their list again')
+  assert.deepEqual(store.codingRoomsDue(t3.name).map((x) => x.threadId), ['th-board'], 'a failed lookup is tried again')
+
+  // th-board's was a board turn, which answers no room.
+  failing = null
+  calls.set(board.createdAt, null)
+  await poll(t3)
+  assert.equal(store.codingThread('c1', t3.name, 'th-board')?.conversationId, null, 'only the 1:1 room lists a thread of no one room')
+  assert.deepEqual(listed(), ['th-board', 'th-group'])
+
+  lookups = 0
+  announced.length = 0
+  await poll(t3)
+  assert.equal(lookups, 0, 'a room is looked for once')
+  assert.deepEqual(announced, [])
 })
 
 test('a wake names T3’s current tools, keeps the secret guard in the line the daemon shows, asks for the title without the mark and no link, and carries none of the thread’s text', () => {

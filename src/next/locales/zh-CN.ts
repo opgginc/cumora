@@ -298,7 +298,7 @@ export const zhCN: Partial<Record<keyof typeof en, string>> = {
   'edit.agentStyleRequired': '智能体需要一种风格。',
   'edit.agentMore': '模型、计算机和头像',
 
-  'coding.none': '这个对话里的智能体还没有启动 T3 Code 线程。',
+  'coding.none': '还没有从这个对话启动的 T3 Code 线程。',
   'coding.locked': '仅限所有者和管理员',
   'coding.lockedBody': '线程标题可能引用任何对话，所以只有工作区所有者和管理员可以查看。',
   'coding.running': '进行中',

@@ -1,8 +1,8 @@
 /**
  * How the Coding tab (CodingTab.tsx) reads a thread, kept apart from the
  * components so tests reach it without a DOM (tests/coding-threads.test.ts):
- * a thread as the server copies it from T3, where it stands, and the groups
- * the list shows it in.
+ * a thread as the server copies it from T3, where it stands, the groups the
+ * list shows it in, and which room's list it is in.
  */
 
 export interface Thread {
@@ -61,3 +61,17 @@ export function threadGroups(coding: Array<{ agentId: string; threads: Thread[] 
     .map((s) => ({ standing: s, rows: rows.filter(({ t }) => standing(t) === s) }))
     .filter((g) => g.rows.length > 0)
 }
+
+/** The room whose threads a room panel's Coding tab lists: none in a 1:1
+ *  room, which lists every thread of its agent, launched there, elsewhere or
+ *  from a turn without one room; the room itself in any other. */
+export const codingRoom = (c: { id: string; kind: string }): string | undefined => (c.kind === 'direct' ? undefined : c.id)
+
+/** Where the tab keeps an agent's last list: under the agent, and under the
+ *  agent and the room for a list of one room. Agent ids hold no space. */
+export const cacheKey = (agentId: string, room: string | undefined): string => (room ? `${agentId} ${room}` : agentId)
+
+/** Whether the lists the tab holds are those of `ids` (space-joined) in
+ *  `room`: lists of other agents or of another room never show. */
+export const listsOf = (lists: Array<{ agentId: string; room?: string }>, ids: string, room: string | undefined): boolean =>
+  lists.map((l) => l.agentId).join(' ') === ids && lists.every((l) => l.room === room)

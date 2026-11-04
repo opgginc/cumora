@@ -34,7 +34,7 @@ test('the store drops the agent, keeps its id from being given out again, and qu
   store.setRoomCategory('c1', 'u1', 'room', work.id)
   store.setPinOrder('c1', 'u1', ['dm', 'room'])
   const coding = (agentId: string) => ({
-    server: 't3code', threadId: `th-${agentId}`, companyId: 'c1', agentId, conversationId: 'dm', title: 't', status: 'running',
+    server: 't3code', threadId: `th-${agentId}`, companyId: 'c1', agentId, title: 't', status: 'running',
     runId: null, requestId: null, pullRequests: [], createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z', settledAt: null, woken: null,
   })
   store.saveCodingThreads([coding('atlas'), coding('nova')])

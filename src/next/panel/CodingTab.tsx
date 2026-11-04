@@ -1,10 +1,11 @@
 /**
- * Coding: the T3 Code threads the room's agents launched, every one not settled
- * in T3 and the recently settled ones, in a group for each way they stand
+ * Coding: the T3 Code threads the room's agents launched from it (in a 1:1
+ * room, every thread of its agent), every one not settled in T3 and the
+ * recently settled ones, in a group for each way they stand
  * (codingThreads.ts), settled last and dimmed. The server copies
  * them from T3 (server/src/fork/coding.ts) and says on the workspace's socket
  * when its copy changed, so the tab reads the list again then, and the last
- * answer per agent draws the list at once when the tab opens again. A row
+ * answer per agent and room draws the list at once when the tab opens again. A row
  * opens the thread's detail in place of the list (`?t3=<server>:<thread id>`),
  * which T3 is read for when it opens, and its pull request chip opens the last
  * pull request. Owners and admins only, because a title an agent wrote can quote
@@ -30,11 +31,12 @@ import { ICheck, ICopy, IInfo, IStop, IX } from '../ui/icons'
 import { errText } from '../sections/calendar/parts'
 import { useRoomAgents } from '../chat/ChatView'
 import { loadableImages, parseThreadKey, threadKey } from './codingText'
-import { isOpenThread, standing, threadGroups, type Standing, type Thread, type ThreadGroup } from './codingThreads'
+import { cacheKey, codingRoom, isOpenThread, listsOf, standing, threadGroups, type Standing, type Thread, type ThreadGroup } from './codingThreads'
 import { JobBar } from './JobBar'
 
 interface Coding { threads: Thread[]; servers: Array<{ name: string; error: string | null }> }
-type AgentCoding = Coding & { agentId: string }
+/** One agent's list; with `room`, only the threads it launched from that room. */
+type AgentCoding = Coding & { agentId: string; room?: string }
 /** GET /api/fork/coding/:server/:threadId: the copy, and what T3 holds of the thread now. */
 interface Detail {
   thread: Thread & { agentId: string }
@@ -47,13 +49,14 @@ interface Detail {
   error: string | null
 }
 
-// The last answer for each agent, so the list draws at once when the tab opens
-// again, and its entrance plays only the first time (src/next/AGENTS.md).
+// The last answer for each agent, and for each agent in each room that lists
+// only its own threads (cacheKey), so the list draws at once when the tab
+// opens again, and its entrance plays only the first time (src/next/AGENTS.md).
 const cache = new Map<string, Coding>()
-const cached = (ids: string): AgentCoding[] | null => {
+const cached = (ids: string, room: string | undefined): AgentCoding[] | null => {
   const lists = ids.split(' ').map((agentId) => {
-    const c = cache.get(agentId)
-    return c ? { agentId, ...c } : null
+    const c = cache.get(cacheKey(agentId, room))
+    return c ? { agentId, room, ...c } : null
   })
   return lists.every((l) => l !== null) ? (lists as AgentCoding[]) : null
 }
@@ -126,36 +129,39 @@ function follow<T>(
 }
 
 /**
- * The threads of some agents (`ids`, space-joined), read again whenever the
- * server's copy changes. `enabled` false skips the reads, for a viewer the
- * route refuses or a menu that is closed.
+ * The threads of some agents (`ids`, space-joined), with `room` only those
+ * they launched from that room, read again whenever the server's copy
+ * changes. `enabled` false skips the reads, for a viewer the route refuses or
+ * a menu that is closed.
  */
-export function useCoding(ids: string, enabled = true): { coding: AgentCoding[] | null; fresh: boolean; error: string | null } {
-  const [coding, setCoding] = useState(() => cached(ids))
+export function useCoding(ids: string, enabled = true, room?: string): { coding: AgentCoding[] | null; fresh: boolean; error: string | null } {
+  const [coding, setCoding] = useState(() => cached(ids, room))
   // Only a list that arrives with a first answer fades in.
-  const [fresh, setFresh] = useState(() => cached(ids) === null)
+  const [fresh, setFresh] = useState(() => cached(ids, room) === null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     if (!enabled) return
-    const hit = cached(ids)
+    const hit = cached(ids, room)
     setCoding(hit)
     setFresh(hit === null)
     setError(null)
+    const query = room ? `?room=${encodeURIComponent(room)}` : ''
     return follow(
       () => Promise.all(ids.split(' ').map(async (agentId) =>
-        ({ agentId, ...(await http<Coding>(`/fork/agents/${encodeURIComponent(agentId)}/coding`)) }))),
+        ({ agentId, room, ...(await http<Coding>(`/fork/agents/${encodeURIComponent(agentId)}/coding${query}`)) }))),
       (lists) => {
-        for (const { agentId, threads, servers } of lists) cache.set(agentId, { threads, servers })
+        for (const { agentId, threads, servers } of lists) cache.set(cacheKey(agentId, room), { threads, servers })
         setCoding(lists)
         setError(null)
       },
       setError,
       true,
     )
-  }, [ids, enabled])
+  }, [ids, enabled, room])
   // While reads are off, the state can still hold the lists of agents asked
-  // about before (the menu reopened on someone else); those never show.
-  const own = coding !== null && coding.map((c) => c.agentId).join(' ') === ids
+  // about before (the menu reopened on someone else), and for the render
+  // before a read starts, another room's; those never show.
+  const own = coding !== null && listsOf(coding, ids, room)
   return { coding: own ? coding : null, fresh, error }
 }
 
@@ -378,12 +384,13 @@ function ThreadRows({ groups, fresh, agents, server }: {
   )
 }
 
-/** The threads of `agents` in their groups, or the one `?t3=` names; a face
- *  on each row and in the detail once there are several agents. */
-export function CodingList({ agents }: { agents: Participant[] }) {
+/** The threads of `agents` in their groups, with `room` only those launched
+ *  from it, or the one `?t3=` names; a face on each row and in the detail once
+ *  there are several agents. */
+export function CodingList({ agents, room }: { agents: Participant[]; room?: string }) {
   const nt = useNT()
   const route = useRoute()
-  const { coding, fresh, error } = useCoding(agents.map((a) => a.id).join(' '))
+  const { coding, fresh, error } = useCoding(agents.map((a) => a.id).join(' '), true, room)
   const key = route.search.get('t3')
   // A malformed key names no thread, so the list shows.
   const open = key ? parseThreadKey(key) : null
@@ -402,7 +409,7 @@ export function CodingList({ agents }: { agents: Participant[] }) {
   return (
     <>
       {groups.length === 0
-        ? <div className="nx-empty">{nt(agents.length === 1 ? 'coding.noneAgent' : 'coding.none')}</div>
+        ? <div className="nx-empty">{nt(room ? 'coding.none' : 'coding.noneAgent')}</div>
         : <ThreadRows groups={groups} fresh={fresh} agents={agents} server={servers.length > 1} />}
       {/* A failing T3 server may be holding threads back, even when none show. */}
       {servers.filter((s) => s.error).map((s) => <p key={s.name} className="nx-field__error" role="alert">{nt('coding.serverError', { server: s.name, error: s.error ?? '' })}</p>)}
@@ -417,5 +424,5 @@ export function CodingTab({ c }: { c: Conversation }) {
   const admin = useAdmin()
   if (agents.length === 0) return <div className="nx-empty">{nt('panel.noAgents')}</div>
   if (!admin) return <div className="nx-empty"><b>{nt('coding.locked')}</b>{nt('coding.lockedBody')}</div>
-  return <CodingList agents={agents} />
+  return <CodingList agents={agents} room={codingRoom(c)} />
 }

@@ -316,7 +316,7 @@ test('a coding thread keeps its first agent and room, and wakes its agent once p
   // None of these threads is settled, so the list's cutoff for settled ones does not matter here.
   const LIST = { servers: ['t3code'], open: ['running', 'question'], settledSince: '2026-10-01T00:00:00.000Z', settledLimit: 20 }
   const thread = (status: string, more: Partial<NewCodingThread> = {}): NewCodingThread => ({
-    server: 't3code', threadId: 'th-1', companyId: 'c1', agentId: 'bot', conversationId: 'room', title: 'Fix the header',
+    server: 't3code', threadId: 'th-1', companyId: 'c1', agentId: 'bot', title: 'Fix the header',
     status, runId: 'run-1', requestId: null, pullRequests: [], createdAt: '2026-10-20T01:00:00Z', updatedAt: '2026-10-20T01:05:00Z',
     settledAt: null, woken: null, ...more,
   })
@@ -344,15 +344,20 @@ test('a coding thread keeps its first agent and room, and wakes its agent once p
   assert.deepEqual(due(), ['th-1:run-1:question:q-2'])
   wakeAll()
 
-  // Later polls pass no room and may carry another mark; the first copy's stay.
-  store.saveCodingThreads([thread('completed', { conversationId: null, agentId: 'other', pullRequests: [{ number: 7, url: 'https://x/7', state: null }] })])
+  // The poller looks for a copy's room once; later polls may carry another mark, and the first copy's agent and its room stay.
+  assert.equal(store.codingThread('c1', 't3code', 'th-1')?.conversationId, undefined, 'not looked for yet')
+  assert.deepEqual(store.codingRoomsDue('t3code').map((t) => t.threadId), ['th-1'])
+  assert.deepEqual(store.codingRoomsDue('t3code-m4'), [], 'per server')
+  store.setCodingRooms('t3code', [{ threadId: 'th-1', conversationId: 'room' }])
+  assert.deepEqual(store.codingRoomsDue('t3code'), [], 'looked for once')
+  store.saveCodingThreads([thread('completed', { agentId: 'other', pullRequests: [{ number: 7, url: 'https://x/7', state: null }] })])
   const [done] = store.codingThreads('c1', 'bot', LIST)
   assert.equal(done.conversationId, 'room')
   assert.deepEqual(done.pullRequests, [{ number: 7, url: 'https://x/7', state: null }])
   assert.deepEqual(due(), ['th-1:run-1:completed:'])
 
-  store.markCodingWoken('t3code', 'th-1', codingWakeKey(done), null, 'another room')
-  assert.equal(store.codingThreads('c1', 'bot', LIST)[0].conversationId, 'room', 'a wake keeps the room the thread has')
+  store.markCodingWoken('t3code', 'th-1', codingWakeKey(done), null)
+  assert.equal(store.codingThreads('c1', 'bot', LIST)[0].conversationId, 'room', 'a wake keeps the room')
   const reopened = await openForkStore(file)
   assert.deepEqual(reopened.codingWakesDue('t3code', REST), [], 'woken once, across a restart')
   reopened.saveCodingThreads([thread('completed', { runId: 'run-2' })])
@@ -363,19 +368,48 @@ test('a coding thread keeps its first agent and room, and wakes its agent once p
   assert.ok(!reopened.codingWakesDue('t3code', REST).some((t) => t.threadId === 'th-old'))
   assert.deepEqual([...reopened.codingThreadKeys()].sort(), ['t3code th-1', 't3code th-old'])
 
-  // The poller copies a thread without a room; its first wake keeps the room it found.
-  reopened.saveCodingThreads([thread('completed', { threadId: 'th-new', conversationId: null })])
+  // A group room lists the threads launched from it; a turn without one room puts its thread in none.
+  reopened.saveCodingThreads([thread('completed', { threadId: 'th-new' }), thread('completed', { threadId: 'th-board' })])
   const [fresh] = reopened.codingWakesDue('t3code', REST).filter((t) => t.threadId === 'th-new')
-  assert.equal(fresh.conversationId, null)
-  reopened.markCodingWoken('t3code', 'th-new', codingWakeKey(fresh), null, 'the room')
-  assert.equal(reopened.codingThreads('c1', 'bot', LIST).find((t) => t.threadId === 'th-new')?.conversationId, 'the room')
+  assert.equal(fresh.conversationId, undefined, 'a wake due before the room is looked for sees none')
+  assert.deepEqual(reopened.codingRoomsDue('t3code').map((t) => t.threadId).sort(), ['th-board', 'th-new', 'th-old'], 'a copy that arrived woken has its room looked for too')
+  reopened.unlistCodingThreads('t3code', ['th-1', 'th-new', 'th-board'])
+  assert.deepEqual(reopened.codingRoomsDue('t3code').map((t) => t.threadId).sort(), ['th-board', 'th-new'], 'but not once T3 stops listing it')
+  reopened.setCodingRooms('t3code', [{ threadId: 'th-new', conversationId: 'the room' }, { threadId: 'th-board', conversationId: null }])
+  assert.deepEqual(reopened.codingRoomsDue('t3code'), [])
+  assert.equal((await openForkStore(file)).codingThread('c1', 't3code', 'th-board')?.conversationId, null, 'looked for, no one room, and written to the file')
+  const inRoom = (room: string) => reopened.codingThreads('c1', 'bot', { ...LIST, room }).map((t) => t.threadId).sort()
+  assert.deepEqual(inRoom('the room'), ['th-new'])
+  assert.deepEqual(inRoom('room'), ['th-1'])
+  assert.deepEqual(inRoom('elsewhere'), [])
+  assert.deepEqual(reopened.codingThreads('c1', 'bot', LIST).map((t) => t.threadId).sort(), ['th-1', 'th-board', 'th-new'], 'without a room, all of them')
+})
+
+test('a file from before rooms were kept looks once more for the room of every thread without one', async () => {
+  const file = join(dir, 'coding-v13', 'fork.sqlite')
+  const store = await openForkStore(file)
+  const thread = (threadId: string): NewCodingThread => ({
+    server: 't3code', threadId, companyId: 'c1', agentId: 'bot', title: threadId, status: 'completed', runId: `run-${threadId}`,
+    requestId: null, pullRequests: [], createdAt: '2026-10-20T01:00:00Z', updatedAt: '2026-10-20T01:05:00Z', settledAt: null, woken: null,
+  })
+  store.saveCodingThreads([thread('th-woken'), thread('th-unknown'), thread('th-stale')])
+  // Version 13 kept a room only once a wake had found it, and NULL for a room
+  // it could not find as for one never looked for.
+  const SQL = await initSqlJs()
+  const raw = new SQL.Database(readFileSync(file))
+  raw.run("ALTER TABLE coding_threads DROP COLUMN room_checked; UPDATE coding_threads SET conversation_id = 'g-1' WHERE thread_id = 'th-woken'; PRAGMA user_version = 13")
+  writeFileSync(file, raw.export())
+
+  const upgraded = await openForkStore(file)
+  assert.equal(upgraded.codingThread('c1', 't3code', 'th-woken')?.conversationId, 'g-1')
+  assert.deepEqual(upgraded.codingRoomsDue('t3code').map((t) => t.threadId).sort(), ['th-stale', 'th-unknown'])
 })
 
 test('the coding list holds every unsettled or moving thread and the newest settled ones, and a whole read unlists what T3 no longer lists', async () => {
   const store = await openForkStore(join(dir, 'coding-list', 'fork.sqlite'))
   const at = (minutes: number) => new Date(Date.UTC(2026, 9, 26) + minutes * 60_000).toISOString()
   const thread = (threadId: string, settledAt: string | null, minutes: number, more: Partial<NewCodingThread> = {}): NewCodingThread => ({
-    server: 't3code', threadId, companyId: 'c1', agentId: 'bot', conversationId: null, title: threadId, status: 'completed',
+    server: 't3code', threadId, companyId: 'c1', agentId: 'bot', title: threadId, status: 'completed',
     runId: `run-${threadId}`, requestId: null, pullRequests: [], createdAt: at(0), updatedAt: at(minutes), settledAt, woken: null, ...more,
   })
   const list = (servers = ['t3code', 't3code-m4']) =>
@@ -420,7 +454,7 @@ test('the coding list holds every unsettled or moving thread and the newest sett
 
   // Listed again, a thread comes back without waking its agent again for the rest it was woken for.
   const back = thread('open-5', null, 5)
-  store.markCodingWoken('t3code', 'open-5', codingWakeKey(back), null, 'room')
+  store.markCodingWoken('t3code', 'open-5', codingWakeKey(back), null)
   assert.deepEqual([...store.saveCodingThreads([back])], ['c1'], 'coming back is a change')
   assert.ok(list().some((t) => t.threadId === 'open-5'))
   assert.deepEqual(store.codingWakesDue('t3code', ['completed']).filter((t) => t.threadId === 'open-5'), [])
@@ -462,7 +496,7 @@ test('an answer in the person\'s own words keeps its text, also in a file from b
   ;(await openForkStore(file)).createCard({ ...ask, messageId: 'm-q' })
   const SQL = await initSqlJs()
   const raw = new SQL.Database(readFileSync(file))
-  raw.run('ALTER TABLE cards DROP COLUMN answer_text; ALTER TABLE coding_threads DROP COLUMN settled_at; ALTER TABLE coding_threads DROP COLUMN unlisted; PRAGMA user_version = 11')
+  raw.run('ALTER TABLE cards DROP COLUMN answer_text; ALTER TABLE coding_threads DROP COLUMN settled_at; ALTER TABLE coding_threads DROP COLUMN unlisted; ALTER TABLE coding_threads DROP COLUMN room_checked; PRAGMA user_version = 11')
   writeFileSync(file, raw.export())
 
   const store = await openForkStore(file)
