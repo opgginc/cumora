@@ -42,8 +42,13 @@ function setup(last: number, cache: Message[] = messages(1, 80), serverMessages 
         .slice(-(options.limit ?? 80))
     },
   }
-  // Stand-ins for the chat list and the selection; a room the server answers 404 for must leave both.
-  const rooms = create(() => ({ list: [{ id: 'chat' }, { id: 'other' }] }))
+  // Stand-ins for the chat list and the selection. `server.rooms` is the room
+  // list the server answers; reload() copies it into the chat list.
+  const server = { rooms: ['chat', 'other'] }
+  const rooms = create<{ list: { id: string }[]; reload: () => Promise<void> }>((set) => ({
+    list: [{ id: 'chat' }, { id: 'other' }],
+    reload: async () => set({ list: server.rooms.map((id) => ({ id })) }),
+  }))
   const app = create<{ selectedConversationId: string | null; selectConversation: (id: string | null) => void }>((set) => ({
     selectedConversationId: 'chat',
     selectConversation: (id) => set({ selectedConversationId: id }),
@@ -68,30 +73,49 @@ function setup(last: number, cache: Message[] = messages(1, 80), serverMessages 
     firstItemIndex: { chat: exports.VIRTUOSO_FIRST_INDEX_BASE },
   })
   const sequences = () => store.getState().byConvo.chat.map((m) => (m as ApiMessage).sequence)
-  return { store, api, requests, sequences, rooms, app }
+  return { store, api, requests, sequences, rooms, app, server }
 }
 
 describe('a room the server answers 404 for', () => {
-  // Why the row has to go: the comment on the 404 branch of loadConversation.
-  it('leaves the chat list along with the selection', async () => {
-    const { store, api, rooms, app } = setup(80, [])
+  // Why the store asks the server's room list: the comments on the 404 branch of loadConversation.
+  it('leaves the chat list and the selection when the server no longer lists it', async () => {
+    const { store, api, rooms, app, server } = setup(80, [])
     api.getMessages = async () => { throw new ApiError('not found (404)', 404) }
+    server.rooms = ['other']
     await store.getState().loadConversation('chat')
     assert.deepEqual(rooms.getState().list.map((c) => c.id), ['other'])
     assert.equal(app.getState().selectedConversationId, null)
+    assert.equal(store.getState().loading.size, 0)
+  })
+
+  it('keeps every row and the selection while the server still lists them', async () => {
+    const { store, api, rooms, app } = setup(80, [])
+    const answer = api.getMessages
+    api.getMessages = async () => { throw new ApiError('not found (404)', 404) }
+    for (const id of ['chat', 'other']) await store.getState().loadConversation(id)
+    assert.deepEqual(rooms.getState().list.map((c) => c.id), ['chat', 'other'])
+    assert.equal(app.getState().selectedConversationId, 'chat')
+    assert.equal(store.getState().errors.chat, 'not found (404)')
+    // Once the server answers again, Retry loads the room.
+    api.getMessages = answer
+    await store.getState().retryLoad('chat')
+    assert.ok(store.getState().loaded.has('chat'))
+    assert.equal(store.getState().errors.chat, undefined)
   })
 
   it('stays listed after a failure that is not a 404', async () => {
-    const { store, api, rooms } = setup(80, [])
+    const { store, api, rooms, server } = setup(80, [])
     api.getMessages = async () => { throw new Error('Failed to fetch') }
+    server.rooms = ['other']
     await store.getState().loadConversation('chat')
     assert.deepEqual(rooms.getState().list.map((c) => c.id), ['chat', 'other'])
   })
 
   it('stays listed when a 403 or 500 says "not found"', async () => {
     for (const status of [403, 500]) {
-      const { store, api, rooms } = setup(80, [])
+      const { store, api, rooms, server } = setup(80, [])
       api.getMessages = async () => { throw new ApiError(`participant not found (${status})`, status) }
+      server.rooms = ['other']
       await store.getState().loadConversation('chat')
       assert.deepEqual(rooms.getState().list.map((c) => c.id), ['chat', 'other'], `status ${status}`)
     }
