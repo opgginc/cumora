@@ -31,7 +31,7 @@ import { ICheck, ICopy, IInfo, IStop, IX } from '../ui/icons'
 import { errText } from '../sections/calendar/parts'
 import { useRoomAgents } from '../chat/ChatView'
 import { loadableImages, parseThreadKey, threadKey } from './codingText'
-import { isOpenThread, standing, threadGroups, type Standing, type Thread, type ThreadGroup } from './codingThreads'
+import { cacheKey, codingRoom, isOpenThread, listsOf, standing, threadGroups, type Standing, type Thread, type ThreadGroup } from './codingThreads'
 import { JobBar } from './JobBar'
 
 interface Coding { threads: Thread[]; servers: Array<{ name: string; error: string | null }> }
@@ -50,11 +50,9 @@ interface Detail {
 }
 
 // The last answer for each agent, and for each agent in each room that lists
-// only its own threads, so the list draws at once when the tab opens again,
-// and its entrance plays only the first time (src/next/AGENTS.md). Agent ids
-// hold no space.
+// only its own threads (cacheKey), so the list draws at once when the tab
+// opens again, and its entrance plays only the first time (src/next/AGENTS.md).
 const cache = new Map<string, Coding>()
-const cacheKey = (agentId: string, room: string | undefined): string => (room ? `${agentId} ${room}` : agentId)
 const cached = (ids: string, room: string | undefined): AgentCoding[] | null => {
   const lists = ids.split(' ').map((agentId) => {
     const c = cache.get(cacheKey(agentId, room))
@@ -163,7 +161,7 @@ export function useCoding(ids: string, enabled = true, room?: string): { coding:
   // While reads are off, the state can still hold the lists of agents asked
   // about before (the menu reopened on someone else), and for the render
   // before a read starts, another room's; those never show.
-  const own = coding !== null && coding.map((c) => c.agentId).join(' ') === ids && coding.every((c) => c.room === room)
+  const own = coding !== null && listsOf(coding, ids, room)
   return { coding: own ? coding : null, fresh, error }
 }
 
@@ -426,7 +424,5 @@ export function CodingTab({ c }: { c: Conversation }) {
   const admin = useAdmin()
   if (agents.length === 0) return <div className="nx-empty">{nt('panel.noAgents')}</div>
   if (!admin) return <div className="nx-empty"><b>{nt('coding.locked')}</b>{nt('coding.lockedBody')}</div>
-  // A 1:1 room lists every thread of its agent, also those launched elsewhere
-  // or from a turn without one room; any other room, those launched from it.
-  return <CodingList agents={agents} room={c.kind === 'direct' ? undefined : c.id} />
+  return <CodingList agents={agents} room={codingRoom(c)} />
 }

@@ -503,12 +503,20 @@ export async function poll(server: T3Server): Promise<void> {
   // room's list. A thread copied before rooms were kept is looked for once too.
   // ponytail: a thread whose agent never records another call is looked for
   // on every read of its server, one indexed query each.
+  const found: Array<{ threadId: string; conversationId: string | null }> = []
   for (const t of store.codingRoomsDue(server.name)) {
-    const room = await launchRoom(t.agentId, t.createdAt)
-    if (room === undefined) continue
-    store.setCodingRoom(server.name, t.threadId, room)
-    if (room !== null) changed.add(t.companyId)
+    // The changes saved above are announced and woken for below even when a
+    // lookup fails; the thread stays due, so the next read looks again.
+    try {
+      const room = await launchRoom(t.agentId, t.createdAt)
+      if (room === undefined) continue
+      found.push({ threadId: t.threadId, conversationId: room })
+      if (room !== null) changed.add(t.companyId)
+    } catch (err) {
+      console.error(`[fork] could not look for the room T3 thread ${t.threadId} was launched from:`, err)
+    }
   }
+  store.setCodingRooms(server.name, found)
   if (pollErrors.get(server.name) !== failed) for (const id of await agentWorkspaces()) changed.add(id)
   await announce(changed)
   for (const t of store.codingWakesDue(server.name, WAKE_STATUSES)) await wake(t)
@@ -547,14 +555,21 @@ type Requirer = (req: Request & AuthedRequest) => Promise<{ userId: string; comp
  *  workspace owners and admins only, since a thread's title and messages are
  *  agent text, which can quote any room. Both coding routes go through here;
  *  with `agentId` the same query also says whether it is an agent of the
- *  workspace. null when refused. */
-async function mayReadCoding(companyId: string, userId: string, res: Response, agentId: string | null = null): Promise<{ agent: boolean } | null> {
+ *  workspace. With `room`, which threads were launched from that room is news
+ *  about the room, so a viewer outside it gets 404, as for a missing room
+ *  (./tokens.ts readRoomTokens). null when refused. */
+async function mayReadCoding(companyId: string, userId: string, res: Response, agentId: string | null = null, room?: string): Promise<{ agent: boolean } | null> {
   const { pool } = await import('../db/pool.js')
-  const { rows } = await pool.query<{ role: string | null; agent: boolean }>(
+  const { rows } = await pool.query<{ role: string | null; agent: boolean; member: boolean }>(
     `SELECT (SELECT role FROM company_members WHERE company_id = $1 AND user_id = $2) AS role,
-            EXISTS (SELECT 1 FROM participants WHERE id = $3 AND company_id = $1 AND kind = 'agent') AS agent`,
-    [companyId, userId, agentId],
+            EXISTS (SELECT 1 FROM participants WHERE id = $3 AND company_id = $1 AND kind = 'agent') AS agent,
+            EXISTS (SELECT 1 FROM conversation_members WHERE conversation_id = $4 AND company_id = $1 AND participant_id = $2) AS member`,
+    [companyId, userId, agentId, room ?? null],
   )
+  if (room !== undefined && !rows[0]?.member) {
+    res.status(404).json({ error: 'not found' })
+    return null
+  }
   if (isPrivileged(rows[0]?.role)) return { agent: rows[0].agent }
   res.status(403).json({ error: 'only workspace owners and admins can read what agents code' })
   return null
@@ -568,14 +583,15 @@ const shownThread = (t: CodingThread) => ({
 
 /** GET /api/fork/agents/:agentId/coding: an agent's unsettled threads and its
  *  recently settled ones; with `?room=<conversation id>`, of those only the
- *  ones launched from that room, which a group room's Coding tab asks for.
- *  The room's id is all it adds: whoever may read here reads every thread of
- *  the workspace's agents anyway, and the answer names no room.
+ *  ones launched from that room, which a group room's Coding tab asks for,
+ *  and only for a member of that room. The answer names no room.
  *  Exported for tests. */
 export async function agentCoding(requireCompany: Requirer, req: Request & AuthedRequest, res: Response): Promise<void> {
   const { userId, companyId } = await requireCompany(req)
   const agentId = String(req.params.agentId)
-  const gate = await mayReadCoding(companyId, userId, res, agentId)
+  // An empty `room=` asks for no room, as the client's own check reads it.
+  const room = typeof req.query.room === 'string' && req.query.room !== '' ? req.query.room : undefined
+  const gate = await mayReadCoding(companyId, userId, res, agentId, room)
   if (!gate) return
   if (!gate.agent) {
     res.status(404).json({ error: 'not found' })
@@ -588,7 +604,7 @@ export async function agentCoding(requireCompany: Requirer, req: Request & Authe
     open: OPEN,
     settledSince: new Date(Date.now() - SETTLED_MS).toISOString(),
     settledLimit: SETTLED_LIST,
-    room: typeof req.query.room === 'string' ? req.query.room : undefined,
+    room,
   })
   res.json({
     threads: threads.map(shownThread),

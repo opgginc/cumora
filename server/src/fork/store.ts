@@ -881,15 +881,28 @@ export async function openForkStore(file: string) {
       ).length > 0
     },
 
-    /** Threads from `server` whose launching turn's room was not looked for yet. */
-    codingRoomsDue(server: string): CodingThread[] {
-      return rows(`SELECT ${CODING_COLUMNS} FROM coding_threads WHERE server = ? AND room_checked = 0`, [server]).map(toCodingThread)
+    /** Threads from `server` that T3 still lists whose launching turn's room
+     *  was not looked for yet: a thread T3 stopped listing is in no list and
+     *  wakes nobody. */
+    codingRoomsDue(server: string): Array<Pick<CodingThread, 'threadId' | 'companyId' | 'agentId' | 'createdAt'>> {
+      return rows('SELECT thread_id, company_id, agent_id, created_at FROM coding_threads WHERE server = ? AND room_checked = 0 AND unlisted = 0', [server])
+        .map(([threadId, companyId, agentId, createdAt]) => ({ threadId: String(threadId), companyId: String(companyId), agentId: String(agentId), createdAt: String(createdAt) }))
     },
 
-    /** Records the room of the turn that launched a thread, null when that
-     *  turn had no one room. It is looked for once. */
-    setCodingRoom(server: string, threadId: string, conversationId: string | null): void {
-      db.run('UPDATE coding_threads SET conversation_id = ?, room_checked = 1 WHERE server = ? AND thread_id = ?', [conversationId, server, threadId])
+    /** Records the rooms of the turns that launched threads of `server` in one
+     *  write, null for a turn that had no one room. Each is looked for once. */
+    setCodingRooms(server: string, rooms: Array<{ threadId: string; conversationId: string | null }>): void {
+      if (rooms.length === 0) return
+      db.run('BEGIN')
+      try {
+        for (const { threadId, conversationId } of rooms) {
+          db.run('UPDATE coding_threads SET conversation_id = ?, room_checked = 1 WHERE server = ? AND thread_id = ?', [conversationId, server, threadId])
+        }
+        db.run('COMMIT')
+      } catch (err) {
+        db.run('ROLLBACK')
+        throw err
+      }
       save()
     },
 

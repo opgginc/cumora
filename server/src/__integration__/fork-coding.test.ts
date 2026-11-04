@@ -1,7 +1,7 @@
 /**
  * The Postgres side of the coding poller (server/src/fork/coding.ts) against a
- * real Postgres: which room a T3 thread belongs to, where its wake goes, and
- * when T3 is read every few seconds. The poller copies a thread seconds after
+ * real Postgres: which room a T3 thread belongs to, where its wake goes, who
+ * may read a room's list, and when T3 is read every few seconds. The poller copies a thread seconds after
  * its launch, before a Codex turn has recorded anything, so the room must come
  * from the launching turn's own call and never from the turn before it, or the
  * thread is listed in the wrong group room and its wake lands there.
@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pool } from '../db/pool.js'
 import { getForkStore } from '../fork/store.js'
-import { ensureSchemaOnce, resetAllTables, seedCompanyWithAgent, teardownAll } from './_helpers.js'
+import { ensureSchemaOnce, resetAllTables, seedCompanyWithAgent, seedUserMembership, teardownAll } from './_helpers.js'
 
 // coding.ts finds its T3 tokens relative to the server's cwd when it loads.
 const root = mkdtempSync(join(tmpdir(), 'fork-coding-pg-'))
@@ -22,7 +22,7 @@ mkdirSync(join(root, 'server/computer/t3code'), { recursive: true })
 writeFileSync(join(root, 'server/computer/t3code/tok'), 'token-123\n')
 const cwd = process.cwd()
 process.chdir(root)
-const { hot, launchRoom, poll } = await import('../fork/coding.js')
+const { agentCoding, hot, launchRoom, poll } = await import('../fork/coding.js')
 process.chdir(cwd)
 
 before(async () => { await ensureSchemaOnce() })
@@ -127,4 +127,30 @@ test('T3 is read every few seconds while an agent is busy or a copied thread sti
   }])
   assert.equal(await hot(server), true, 'a running thread will come to rest')
   assert.equal(await hot(`t3-${randomUUID()}`), false, 'only on its own server')
+})
+
+test('a list of one room answers only a member of that room, owner or not', async () => {
+  const { companyId, agentId } = await seedCompanyWithAgent()
+  const owner = `u-${randomUUID().slice(0, 8)}`
+  await seedUserMembership(owner, companyId)
+  const room = (id: string, members: string[]) => pool.query(
+    `INSERT INTO conversations (id, kind, title, members, tag, company_id) VALUES ($1, 'group', $1, $2::jsonb, 'group', $3)`,
+    [id, JSON.stringify(members), companyId],
+  )
+  await room('g-in', [agentId, owner])
+  await room('g-out', [agentId])
+  const list = async (query: Record<string, string>) => {
+    const res = {
+      code: 200,
+      body: null as unknown,
+      status(code: number) { this.code = code; return this },
+      json(body: unknown) { this.body = body; return this },
+    }
+    await agentCoding(async () => ({ userId: owner, companyId }), { params: { agentId }, query } as never, res as never)
+    return res.code
+  }
+  assert.equal(await list({ room: 'g-in' }), 200)
+  assert.equal(await list({ room: 'g-out' }), 404, 'a room the owner is not in answers like a missing room')
+  assert.equal(await list({ room: 'g-missing' }), 404)
+  assert.equal(await list({}), 200, 'the list of every thread of the agent needs no room')
 })
