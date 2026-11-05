@@ -62,7 +62,7 @@ import { migrateCodexSession, migrateCodexSessions } from './codex-session-migra
 import { runWithSessionRecovery } from './session-recovery.js'
 import { toolKindOf, type ToolKind } from '../../fork/toolKind.js'
 import { tokenMarks } from '../../fork/tokenRows.js'
-import { contextOf, MEMORY_UNCHANGED, TEAM_UNCHANGED, WakeBlocks } from '../../fork/wakeBlocks.js'
+import { hopContext, memoryBlock, teamBlock, WakeBlocks } from '../../fork/wakeBlocks.js'
 import { CARDS_PROMPT } from '../../fork/cardsPrompt.js'
 import { agentBody, DIGEST_PREVIEW, digestHumanBody, isHumanText, wholeInDigest } from '../../fork/messageBody.js'
 
@@ -2060,8 +2060,9 @@ export class AgentRunner {
     }
     if (report.repeat) return
     // Fork: the size of the agent's own context, for which wake blocks it still
-    // holds; a subagent's calls and a turn's `rest` measure something else.
-    if (!report.sub && !report.rest) this.wakeBlocks.onCall(contextOf(report.usage))
+    // holds; a hop that does not tell it leaves every block whole (fork/wakeBlocks.ts).
+    const context = hopContext(report)
+    if (context !== null) this.wakeBlocks.onCall(context)
     try {
       // Rows whose usage matches the engine's own records (one row per model
       // call, then the turn's `rest` per model) are marked for the chat's
@@ -2961,11 +2962,9 @@ export class AgentRunner {
         ? `Your unread messages (ALREADY FETCHED — no need to re-run \`cumora inbox\` / \`cumora messages\` to re-read ` +
           `these; but DO \`cumora glance\` before posting in a group, to catch anything posted while you compose):\n${inboxDigest}\n\n`
         : `Run \`cumora inbox\`, then \`cumora messages <conversationId> --tail 30\`, to catch up.\n\n`) +
-      // Fork: null = the session holds a recent copy (fork/wakeBlocks.ts).
-      (memoryDigest === null ? `${MEMORY_UNCHANGED}\n\n`
-        : memoryDigest ? `Your memory index (global \`memory/MEMORY.md\` + current project, if any):\n${memoryDigest}\n\n` : ``) +
-      (roster === null ? `${TEAM_UNCHANGED}\n`
-        : roster ? `Your team right now (trust over memory — current roster; use these ids for @mentions and \`cumora dm\`):\n${roster}\n` : ``)
+      // Fork: null = one line, the session holds a recent copy (fork/wakeBlocks.ts).
+      memoryBlock(memoryDigest) +
+      teamBlock(roster, 'Your team right now (trust over memory — current roster; use these ids for @mentions and `cumora dm`)')
     ).trimEnd()
   }
 
@@ -2989,10 +2988,9 @@ export class AgentRunner {
       (inboxDigest
         ? `Unread messages that arrived with this wake (also handle anything addressed to you):\n${inboxDigest}\n\n`
         : '') +
-      // Fork: null = the session holds a recent copy (fork/wakeBlocks.ts).
-      (memoryDigest === null ? `${MEMORY_UNCHANGED}\n\n`
-        : memoryDigest ? `Your memory index (global \`memory/MEMORY.md\` + current project, if any):\n${memoryDigest}\n\n` : '') +
-      (roster === null ? `${TEAM_UNCHANGED}\n` : roster ? `Your team (use these ids for @mentions):\n${roster}\n` : '')
+      // Fork: null = one line, the session holds a recent copy (fork/wakeBlocks.ts).
+      memoryBlock(memoryDigest) +
+      teamBlock(roster, 'Your team (use these ids for @mentions)')
     ).trimEnd()
   }
 
@@ -3010,10 +3008,9 @@ export class AgentRunner {
       `never nag, never revive a finished thread. Coordinate before you commit (claim before shared work, trust card status); ` +
       `follow your standing instructions for mechanics.\n\n` +
       `${brief}\n\n` +
-      // Fork: null = the session holds a recent copy (fork/wakeBlocks.ts).
-      (memoryDigest === null ? `${MEMORY_UNCHANGED}\n\n`
-        : memoryDigest ? `Your memory index (global \`memory/MEMORY.md\` + current project, if any):\n${memoryDigest}\n\n` : ``) +
-      (roster === null ? `${TEAM_UNCHANGED}\n` : roster ? `Your team (use these ids for @mentions):\n${roster}\n` : ``)
+      // Fork: null = one line, the session holds a recent copy (fork/wakeBlocks.ts).
+      memoryBlock(memoryDigest) +
+      teamBlock(roster, 'Your team (use these ids for @mentions)')
     ).trimEnd()
   }
 
