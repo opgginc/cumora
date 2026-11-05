@@ -2060,7 +2060,7 @@ export class AgentRunner {
     }
     if (report.repeat) return
     // Fork: the size of the agent's own context, for which wake blocks it still
-    // holds; a hop that does not tell it leaves every block whole (fork/wakeBlocks.ts).
+    // holds; a hop that does not tell it is ignored (fork/wakeBlocks.ts).
     const context = hopContext(report)
     if (context !== null) this.wakeBlocks.onCall(context)
     try {
@@ -2224,9 +2224,8 @@ export class AgentRunner {
     const resumeSessionId = this.resumeSessionId()
     return runWithSessionRecovery({
       resumeSessionId,
-      // Built per attempt, for a session that has read none of the wake blocks
-      // unless the live engine process that read them runs it: a fresh retry
-      // has read nothing, and a new process may not hold them either (the
+      // Rebuilt per attempt. Only a live engine process still holds the copies
+      // it read, so a fresh retry or a new process gets both blocks whole (the
       // persistent Codex session starts a new thread when thread/resume fails,
       // without a resume-not-found). Fork: fork/wakeBlocks.ts.
       run: (resume) => this.runEngineAttempt(delta(this.engineSession?.alive ? resume : null), resume),

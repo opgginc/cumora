@@ -14,6 +14,7 @@
  * In memory only: after a daemon restart both go whole on the next wake.
  * Kept free of server imports: the daemon bundle includes it.
  */
+import type { EngineHopReport } from '../agents/computer/engine.js'
 
 /** How far back the latest whole copy may sit, in tokens of the session's context. */
 export const REFRESH_TOKENS = 30_000
@@ -23,12 +24,11 @@ const MEMORY_HEADING = 'Your memory index (global `memory/MEMORY.md` + current p
  *  others, so the guidance in it must be the same. */
 const TEAM_HEADING = 'Your team right now (trust over memory — current roster; use these ids for @mentions and `cumora dm`)'
 
-type WakeBlockTexts = { memory: string; team: string }
+const NAMES = ['memory', 'team'] as const
+type Name = (typeof NAMES)[number]
+type WakeBlockTexts = Record<Name, string>
 /** Per block: the text to send whole, '' for no block, or null for the one line. */
-type WakeBlockPick = { memory: string | null; team: string | null }
-
-type Name = keyof WakeBlockTexts
-const NAMES: readonly Name[] = ['memory', 'team']
+type WakeBlockPick = Record<Name, string | null>
 
 /** The memory block of a wake prompt. The one line names the file: a built-in
  *  compaction at the start of the turn can summarize the earlier copy away. */
@@ -48,12 +48,7 @@ export function teamBlock(team: string | null): string {
  *  does not tell it: only an exact hop (persistent Claude, Codex app-server)
  *  is one call's usage; other engines report a turn's sum or nothing, and a
  *  subagent's call or a turn's `rest` measures something else. */
-export function hopContext(hop: {
-  exact?: true
-  sub?: string
-  rest?: unknown
-  usage: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
-}): number | null {
+export function hopContext(hop: Pick<EngineHopReport, 'exact' | 'sub' | 'rest' | 'usage'>): number | null {
   if (!hop.exact || hop.sub || hop.rest) return null
   const { input_tokens = 0, cache_read_input_tokens = 0, cache_creation_input_tokens = 0 } = hop.usage
   return input_tokens + cache_read_input_tokens + cache_creation_input_tokens
