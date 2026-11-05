@@ -62,6 +62,7 @@ import { migrateCodexSession, migrateCodexSessions } from './codex-session-migra
 import { runWithSessionRecovery } from './session-recovery.js'
 import { toolKindOf, type ToolKind } from '../../fork/toolKind.js'
 import { tokenMarks } from '../../fork/tokenRows.js'
+import { hopContext, memoryBlock, teamBlock, WakeBlocks } from '../../fork/wakeBlocks.js'
 import { CARDS_PROMPT } from '../../fork/cardsPrompt.js'
 import { agentBody, DIGEST_PREVIEW, digestHumanBody, isHumanText, wholeInDigest } from '../../fork/messageBody.js'
 
@@ -1918,6 +1919,9 @@ export class AgentRunner {
    *  on a frozen inbox snapshot. Captured from each run's stream-json output;
    *  cleared if a resume fails so the next wake starts a clean session. */
   private sessionId: string | null = null
+  /** Fork: which of the memory index and team this session holds a recent
+   *  copy of, so a wake sends them whole only when it does not (fork/wakeBlocks.ts). */
+  private wakeBlocks = new WakeBlocks()
   /** Set when the persistent engine process proved unusable on this machine, so
    *  the runner stops trying it and stays on the one-shot path. Without this a
    *  process that starts and then fails every turn fails every turn forever;
@@ -2055,6 +2059,10 @@ export class AgentRunner {
       if (this.requestedStatus !== 'working' || tool !== this.requestedTool) void this.postStatus(token, 'working', tool)
     }
     if (report.repeat) return
+    // Fork: the size of the agent's own context, for which wake blocks it still
+    // holds; a hop that does not tell it is ignored (fork/wakeBlocks.ts).
+    const context = hopContext(report)
+    if (context !== null) this.wakeBlocks.onCall(context)
     try {
       // Rows whose usage matches the engine's own records (one row per model
       // call, then the turn's `rest` per model) are marked for the chat's
@@ -2212,11 +2220,15 @@ export class AgentRunner {
   /** A missing resume target proves the model never began the requested turn,
    * so one fresh retry is safe. Every other failure returns immediately to
    * avoid duplicating tool side effects after an ambiguous crash or timeout. */
-  private async runWithSessionRecovery(delta: string): Promise<EngineRunResult> {
+  private async runWithSessionRecovery(delta: (resume: string | null) => string): Promise<EngineRunResult> {
     const resumeSessionId = this.resumeSessionId()
     return runWithSessionRecovery({
       resumeSessionId,
-      run: (resume) => this.runEngineAttempt(delta, resume),
+      // Rebuilt per attempt. Only a live engine process still holds the copies
+      // it read, so a fresh retry or a new process gets both blocks whole (the
+      // persistent Codex session starts a new thread when thread/resume fails,
+      // without a resume-not-found). Fork: fork/wakeBlocks.ts.
+      run: (resume) => this.runEngineAttempt(delta(this.engineSession?.alive ? resume : null), resume),
       reset: () => this.resetEngineSession(`${this.engine} resume target ${sessionIdPreview(resumeSessionId ?? '')} does not exist`),
       onFreshRetry: () => console.warn(`[computer] ${this.agent.id} retrying turn once with a fresh ${this.engine} session`),
     })
@@ -2933,7 +2945,7 @@ export class AgentRunner {
   /** Per-turn CHAT delta — only the dynamic bits (the invariant HOW lives in the
    *  standing prompt). Kept small so the persistent session's transcript grows
    *  slowly and native compaction can keep up. */
-  private chatDelta(memoryDigest: string, triageNote: string, inboxDigest: string, roster?: string): string {
+  private chatDelta(memoryDigest: string | null, triageNote: string, inboxDigest: string, roster: string | null): string {
     return (
       `You've been woken because there's new activity in your Cumora conversations, and the cerebellum triage already ` +
       `decided you should respond — your job is to DO it (write the reply / take the action), not to re-judge whether to. ` +
@@ -2952,8 +2964,8 @@ export class AgentRunner {
         ? `Your unread messages (ALREADY FETCHED — no need to re-run \`cumora inbox\` / \`cumora messages\` to re-read ` +
           `these; but DO \`cumora glance\` before posting in a group, to catch anything posted while you compose):\n${inboxDigest}\n\n`
         : `Run \`cumora inbox\`, then \`cumora messages <conversationId> --tail 30\`, to catch up.\n\n`) +
-      (memoryDigest ? `Your memory index (global \`memory/MEMORY.md\` + current project, if any):\n${memoryDigest}\n\n` : ``) +
-      (roster ? `Your team right now (trust over memory — current roster; use these ids for @mentions and \`cumora dm\`):\n${roster}\n` : ``)
+      memoryBlock(memoryDigest) +
+      teamBlock(roster)
     ).trimEnd()
   }
 
@@ -2962,9 +2974,9 @@ export class AgentRunner {
    * assignment and must run even when there is no unread chat row. */
   private manualBriefDelta(
     brief: WakeBackgroundBrief,
-    memoryDigest: string,
+    memoryDigest: string | null,
     inboxDigest: string,
-    roster?: string,
+    roster: string | null,
   ): string {
     return (
       `Current time (UTC): ${new Date().toISOString()} — use this for any --at / deadline math.\n\n` +
@@ -2977,14 +2989,14 @@ export class AgentRunner {
       (inboxDigest
         ? `Unread messages that arrived with this wake (also handle anything addressed to you):\n${inboxDigest}\n\n`
         : '') +
-      (memoryDigest ? `Your memory index (global \`memory/MEMORY.md\` + current project, if any):\n${memoryDigest}\n\n` : '') +
-      (roster ? `Your team (use these ids for @mentions):\n${roster}\n` : '')
+      memoryBlock(memoryDigest) +
+      teamBlock(roster)
     ).trimEnd()
   }
 
   /** Per-turn AGENDA delta — dynamic bits for a proactive board-work wake; the
    *  invariant mechanics live in the standing prompt. */
-  private agendaDelta(brief: string, memoryDigest: string, roster?: string): string {
+  private agendaDelta(brief: string, memoryDigest: string | null, roster: string | null): string {
     return (
       `Current time (UTC): ${new Date().toISOString()} — use this for any --at / deadline math.\n\n` +
       `You've been woken by your OWN AGENDA — Kanban cards assigned to you (or @-mentioning you), calendar slots due now, ` +
@@ -2996,8 +3008,8 @@ export class AgentRunner {
       `never nag, never revive a finished thread. Coordinate before you commit (claim before shared work, trust card status); ` +
       `follow your standing instructions for mechanics.\n\n` +
       `${brief}\n\n` +
-      (memoryDigest ? `Your memory index (global \`memory/MEMORY.md\` + current project, if any):\n${memoryDigest}\n\n` : ``) +
-      (roster ? `Your team (use these ids for @mentions):\n${roster}\n` : ``)
+      memoryBlock(memoryDigest) +
+      teamBlock(roster)
     ).trimEnd()
   }
 
@@ -3038,6 +3050,7 @@ export class AgentRunner {
       this.cfg.serverUrl, '/agenda', token,
     )
     if (!ag?.actionable || !ag.brief) return
+    const brief = ag.brief
     console.log(`[computer] ${this.agent.id} agenda turn START — proactive board work${ag.focus ? `: ${ag.focus.slice(0, 80)}` : ''}`)
     this.turnSeq += 1
     await this.postStatus(token, 'thinking')
@@ -3071,7 +3084,10 @@ export class AgentRunner {
       this.teardown.signal.throwIfAborted()
       const result: EngineRunResult = this.stopReason?.kind === 'manual'
         ? { exitCode: 0, interrupted: true }
-        : await this.runWithSessionRecovery(this.agendaDelta(ag.brief, memoryDigest, roster))
+        : await this.runWithSessionRecovery((resume) => {
+          const blocks = this.wakeBlocks.pick(resume, { memory: memoryDigest, team: roster })
+          return this.agendaDelta(brief, blocks.memory, blocks.team)
+        })
       exitCode = result.exitCode
       turnUsage = result.usage
       turnModel = result.model
@@ -3540,9 +3556,12 @@ export class AgentRunner {
           this.teardown.signal.throwIfAborted()
           const stopNote = this.stopNote
           this.stopNote = null
-          const delta = (stopNote ? `${stopNote}\n\n` : '') + (turnBackgroundBrief
-            ? this.manualBriefDelta(turnBackgroundBrief, memoryDigest, digest, roster)
-            : this.chatDelta(memoryDigest, triageNote, digest, roster))
+          const delta = (resume: string | null) => {
+            const blocks = this.wakeBlocks.pick(resume, { memory: memoryDigest, team: roster })
+            return (stopNote ? `${stopNote}\n\n` : '') + (turnBackgroundBrief
+              ? this.manualBriefDelta(turnBackgroundBrief, blocks.memory, digest, blocks.team)
+              : this.chatDelta(blocks.memory, triageNote, digest, blocks.team))
+          }
           // Stop pressed before the engine got this turn's prompt: skip it.
           const result: EngineRunResult = this.stopReason?.kind === 'manual'
             ? { exitCode: 0, interrupted: true }
