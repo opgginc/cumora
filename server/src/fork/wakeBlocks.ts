@@ -19,10 +19,13 @@
 export const REFRESH_TOKENS = 30_000
 
 const MEMORY_HEADING = 'Your memory index (global `memory/MEMORY.md` + current project, if any)'
+/** One heading for every kind of wake: a copy sent by one kind stands for the
+ *  others, so the guidance in it must be the same. */
+const TEAM_HEADING = 'Your team right now (trust over memory — current roster; use these ids for @mentions and `cumora dm`)'
 
-export type WakeBlockTexts = { memory: string; team: string }
+type WakeBlockTexts = { memory: string; team: string }
 /** Per block: the text to send whole, '' for no block, or null for the one line. */
-export type WakeBlockPick = { memory: string | null; team: string | null }
+type WakeBlockPick = { memory: string | null; team: string | null }
 
 type Name = keyof WakeBlockTexts
 const NAMES: readonly Name[] = ['memory', 'team']
@@ -34,11 +37,11 @@ export function memoryBlock(memory: string | null): string {
   return memory ? `${MEMORY_HEADING}:\n${memory}\n\n` : ''
 }
 
-/** The team block under the prompt's own heading. The one line names the
+/** The team block. The one line keeps the heading's guidance and names the
  *  command that lists the team, for the same reason. */
-export function teamBlock(team: string | null, heading: string): string {
-  if (team === null) return 'Your team: unchanged since it was last shown above (`cumora participants` lists everyone).\n'
-  return team ? `${heading}:\n${team}\n` : ''
+export function teamBlock(team: string | null): string {
+  if (team === null) return 'Your team: unchanged since it was last shown above (trust it over memory; `cumora participants` lists everyone).\n'
+  return team ? `${TEAM_HEADING}:\n${team}\n` : ''
 }
 
 /** The size of the agent's own context at one model call, or null when the hop
@@ -65,8 +68,8 @@ export class WakeBlocks {
   /** The size of the session's latest model call. */
   private last = 0
 
-  /** Called for each attempt of a turn, since a resume that fails is retried
-   *  in a fresh session (`resume` null), which has read nothing. */
+  /** Called for each attempt of a turn with `resume` null for a session that
+   *  has read nothing: a resume retried fresh, or a new engine process. */
   pick(resume: string | null, texts: WakeBlockTexts): WakeBlockPick {
     if (resume === null) {
       this.shown.clear()

@@ -254,7 +254,7 @@ selected engine's sandbox.
    delta: "triage already said this is real — act", the current UTC
    clock, the triage note, a pre-fetched unread digest (with a "glance
    before posting" nudge), a `memory/MEMORY.md` digest, and the team
-   roster. The digest and the roster go whole only when the session may lack
+   roster. The memory digest and the roster go whole only when the session may lack
    a recent copy and as one line otherwise (`server/src/fork/wakeBlocks.ts`).
    The invariant scaffold (CLI usage, the shared
    `GLANCE_YIELD_RULES`, memory rules, privacy boundary) is delivered

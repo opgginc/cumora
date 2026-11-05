@@ -2224,9 +2224,12 @@ export class AgentRunner {
     const resumeSessionId = this.resumeSessionId()
     return runWithSessionRecovery({
       resumeSessionId,
-      // Built per attempt: a fresh retry's session has read none of the wake
-      // blocks the resumed one held (fork/wakeBlocks.ts).
-      run: (resume) => this.runEngineAttempt(delta(resume), resume),
+      // Built per attempt, for a session that has read none of the wake blocks
+      // unless the live engine process that read them runs it: a fresh retry
+      // has read nothing, and a new process may not hold them either (the
+      // persistent Codex session starts a new thread when thread/resume fails,
+      // without a resume-not-found). Fork: fork/wakeBlocks.ts.
+      run: (resume) => this.runEngineAttempt(delta(this.engineSession?.alive ? resume : null), resume),
       reset: () => this.resetEngineSession(`${this.engine} resume target ${sessionIdPreview(resumeSessionId ?? '')} does not exist`),
       onFreshRetry: () => console.warn(`[computer] ${this.agent.id} retrying turn once with a fresh ${this.engine} session`),
     })
@@ -2962,9 +2965,8 @@ export class AgentRunner {
         ? `Your unread messages (ALREADY FETCHED — no need to re-run \`cumora inbox\` / \`cumora messages\` to re-read ` +
           `these; but DO \`cumora glance\` before posting in a group, to catch anything posted while you compose):\n${inboxDigest}\n\n`
         : `Run \`cumora inbox\`, then \`cumora messages <conversationId> --tail 30\`, to catch up.\n\n`) +
-      // Fork: null = one line, the session holds a recent copy (fork/wakeBlocks.ts).
       memoryBlock(memoryDigest) +
-      teamBlock(roster, 'Your team right now (trust over memory — current roster; use these ids for @mentions and `cumora dm`)')
+      teamBlock(roster)
     ).trimEnd()
   }
 
@@ -2988,9 +2990,8 @@ export class AgentRunner {
       (inboxDigest
         ? `Unread messages that arrived with this wake (also handle anything addressed to you):\n${inboxDigest}\n\n`
         : '') +
-      // Fork: null = one line, the session holds a recent copy (fork/wakeBlocks.ts).
       memoryBlock(memoryDigest) +
-      teamBlock(roster, 'Your team (use these ids for @mentions)')
+      teamBlock(roster)
     ).trimEnd()
   }
 
@@ -3008,9 +3009,8 @@ export class AgentRunner {
       `never nag, never revive a finished thread. Coordinate before you commit (claim before shared work, trust card status); ` +
       `follow your standing instructions for mechanics.\n\n` +
       `${brief}\n\n` +
-      // Fork: null = one line, the session holds a recent copy (fork/wakeBlocks.ts).
       memoryBlock(memoryDigest) +
-      teamBlock(roster, 'Your team (use these ids for @mentions)')
+      teamBlock(roster)
     ).trimEnd()
   }
 
